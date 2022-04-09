@@ -7,10 +7,10 @@ A C++ API inspired by Cocoa's NSNotificationCenter API.
 ## Usage
 
 Using NotificationCenter is simple. In order to use the default center, simply use the static
-method `NotificationCenter::defaultNotificationCenter()` like so:
+method `notification_center::default_notification_center()` like so:
 
 ```C++
-NotificationCenter::defaultNotificationCenter()->addObserver([=]{printf("Hello world!\n");}, "My Observer");
+notification_center::default_notification_center().add_observer([=]{printf("Hello world!\n");}, "My Observer");
 ```
 
 NotificationCenter is intended to be included directly in your projects, as such no library (dynamic or static) is
@@ -30,25 +30,25 @@ std::any
 
 ### Adding Observers
 
-Adding observers is a simple porcess. Simply invoke the method `NotificationCenter::addObserver` on your
+Adding observers is a simple porcess. Simply invoke the method `notification_center::add_observer` on your
 NotificationCenter passing in a function pointer and string for the notification that this observer should respond to. A
 couple of examples of how to do this are:
 
 ```C++
-NotificationCenter::defaultNotificationCenter()->addObserver([=]{printf("Hello world!\n");}, "My Observer");
-NotificationCenter::defaultNotificationCenter()->addObserver(helloWorldFunc, "My Observer");
+notification_center::default_notification_center().add_observer([=]{printf("Hello world!\n");}, "My Observer");
+notification_center::default_notification_center().add_observer(helloWorldFunc, "My Observer");
 Foo myFoo;
-NotificationCenter::defaultNotificationCenter()->addObserver(std::bind(&Foo::func, myFoo), "My Observer");
+notification_center::default_notification_center().add_observer(std::bind(&Foo::func, myFoo), "My Observer");
 ```
 
 Currently, only `std::any(std::any)` function signatures are supported.
 
 ### Posting Notifications
 
-Posting notifications can be done with `NotificationCenter::postNotification`, like so:
+Posting notifications can be done with `notification_center::post_notification`, like so:
 
 ```C++
-NotificationCenter::defaultNotificationCenter()->postNotification("My Observer");
+notification_center::default_notification_center().post_notification("My Observer");
 ```
 
 ### Avoiding Unnecessary Lookups
@@ -58,13 +58,13 @@ lookup, which depending on the application may not be ideal. For these situation
 NotificationCenter is to post and modify by iterator. An example of how to do this is:
 
 ```C++
-NotificationCenter::notification_itr_t notiItr = NotificationCenter::defaultNotificationCenter()->getNotificationIterator("My Observer");
-NotificationCenter::defaultNotificationCenter()->addObserver([=]{printf("I'm being posted by an iterator!\n");}, notiItr);
-NotificationCenter::defaultNotificationCenter()->postNotification(notiItr);
+auto notiItr = notification_center::default_notification_center().get_notification_iterator("My Observer");
+notification_center::default_notification_center().add_observer([=]{printf("I'm being posted by an iterator!\n");}, notiItr);
+notification_center::default_notification_center().post_notification(notiItr);
 ```
 
-`NotificationCenter::addObserver`, `NotificationCenter::removeObserver`, `NotificationCenter::removeAllObservers`,
-and `NotificationCenter::postNotification` all support notification iterators in overloaded methods.
+`notification_center::add_observer`, `notification_center::remove_observer`, `notification_center::remove_all_observers`,
+and `notification_center::post_notification` all support notification iterators in overloaded methods.
 
 ### Multiple NotificationCenters
 

@@ -32,27 +32,29 @@
 #include <mutex>
 #include <any>
 
+template <typename ...ARGS>
 struct notification_observer
 {
-    std::function<std::any(std::any&)> m_callback;
+    std::function<std::any(ARGS... args)> m_callback{};
 };
 
+template <typename ...ARGS>
 class notification_center
 {
 public:
-    typedef std::unordered_map<int, std::list<notification_observer> >::const_iterator notification_const_itr_t;
-    typedef std::unordered_map<int, std::list<notification_observer> >::iterator notification_itr_t;
-    typedef std::list<notification_observer>::const_iterator observer_const_itr_t;
-    typedef std::list<notification_observer>::iterator observer_itr_t;
+    typedef typename std::unordered_map<int, std::list<notification_observer<ARGS...>> >::const_iterator notification_const_itr_t;
+    typedef typename std::unordered_map<int, std::list<notification_observer<ARGS...>> >::iterator notification_itr_t;
+    typedef typename std::list<notification_observer<ARGS...>>::const_iterator observer_const_itr_t;
+    typedef typename std::list<notification_observer<ARGS...>>::iterator observer_itr_t;
 	typedef std::tuple<int, observer_const_itr_t>  notification_tuple_t;
 
     /**
      * This method adds a function callback as an observer to a named notification.
      */
-    notification_tuple_t add_observer
+	notification_tuple_t add_observer
 	(
 		int a_name,       				    ///< The name of the notification you wish to observe.
-		std::function<std::any(std::any&)> a_method	///< The function callback.  Accepts unsigned int(std::any) methods or lambdas.
+		std::function<std::any(ARGS... args)> a_method	///< The function callback.  Accepts unsigned int(std::any) methods or lambdas.
 	);
 
     /**
@@ -61,7 +63,7 @@ public:
     observer_const_itr_t add_observer
 	(
 		notification_itr_t& a_notification,				///< The name of the notification you wish to observe.
-		std::function<std::any(std::any&)> a_method	    ///< The function callback.  Accepts unsigned int(std::any) methods or lambdas.
+		std::function<std::any(ARGS... args)> a_method	    ///< The function callback.  Accepts unsigned int(std::any) methods or lambdas.
 	);
 
     /**
@@ -105,7 +107,7 @@ public:
     bool post_notification
 	(
 		int a_notification,			///< The name of the notification you wish to post.
-		std::any& a_payload			///< The payload associated with the specified notification. nullptr by default.
+		ARGS... args			///< The payload associated with the specified notification. nullptr by default.
 	) const;
 
 	/**
@@ -126,7 +128,7 @@ public:
     bool post_notification
 	(
 		notification_const_itr_t& a_notification,	///< The name of the notification you wish to post.
-		std::any& a_payload						///< The payload associated with the specified notification. nullptr by default.
+		ARGS... args	///< The payload associated with the specified notification. nullptr by default.
 	) const;
 
 	/**
@@ -155,7 +157,7 @@ public:
 
 private:
 	static std::shared_ptr<notification_center> m_default_center_;
-    std::unordered_map<int, std::list<notification_observer> > m_observers_;
+    std::unordered_map<int, std::list<notification_observer<ARGS...>> > m_observers_{};
 	typedef std::recursive_mutex mutex_t;
     mutable mutex_t m_mutex_;
 };

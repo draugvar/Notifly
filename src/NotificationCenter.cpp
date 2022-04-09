@@ -29,8 +29,9 @@
 
 #include "NotificationCenter.h"
 
-notification_center::notification_tuple_t notification_center::add_observer(
-	const int a_name, std::function<std::any(std::any&)> a_method)
+template <typename ...ARGS>
+typename notification_center<ARGS...>::notification_tuple_t notification_center<ARGS...>::add_observer(
+	const int a_name, std::function<std::any(ARGS... args)> a_method)
 {
 	std::lock_guard a_lock(m_mutex_);
 	notification_observer a_notification_observer;
@@ -39,8 +40,9 @@ notification_center::notification_tuple_t notification_center::add_observer(
 	return std::make_tuple(a_name, --m_observers_[a_name].end());
 }
 
-notification_center::observer_const_itr_t notification_center::add_observer(
-	notification_itr_t& a_notification, std::function<std::any(std::any&)> a_method)
+template <typename ...ARGS>
+typename notification_center<ARGS...>::observer_const_itr_t notification_center<ARGS...>::add_observer(
+	notification_itr_t& a_notification, std::function<std::any(ARGS... args)> a_method)
 {
 	std::lock_guard a_lock(m_mutex_);
 	auto a_return_value = a_notification->second.end();
@@ -54,7 +56,8 @@ notification_center::observer_const_itr_t notification_center::add_observer(
 	return a_return_value;
 }
 
-void notification_center::remove_observer(notification_tuple_t& a_notification)
+template <typename ...ARGS>
+void notification_center<ARGS...>::remove_observer(notification_tuple_t& a_notification)
 {
 	std::lock_guard a_lock(m_mutex_);
 	if (auto a_notification_iterator = m_observers_.find(std::get<0>(a_notification));
@@ -64,7 +67,8 @@ void notification_center::remove_observer(notification_tuple_t& a_notification)
 	}
 }
 
-void notification_center::remove_observer(notification_itr_t& a_notification, observer_const_itr_t& a_observer)
+template <typename ...ARGS>
+void notification_center<ARGS...>::remove_observer(notification_itr_t& a_notification, observer_const_itr_t& a_observer)
 {
 	std::lock_guard a_lock(m_mutex_);
 	if (a_notification != m_observers_.end())
@@ -73,13 +77,15 @@ void notification_center::remove_observer(notification_itr_t& a_notification, ob
 	}
 }
 
-void notification_center::remove_all_observers(const int a_name)
+template <typename ...ARGS>
+void notification_center<ARGS...>::remove_all_observers(const int a_name)
 {
 	std::lock_guard a_lock(m_mutex_);
 	m_observers_.erase(a_name);
 }
 
-void notification_center::remove_all_observers(notification_itr_t& a_notification)
+template <typename ...ARGS>
+void notification_center<ARGS...>::remove_all_observers(notification_itr_t& a_notification)
 {
 	std::lock_guard a_lock(m_mutex_);
 	if (a_notification != m_observers_.end())
@@ -88,7 +94,8 @@ void notification_center::remove_all_observers(notification_itr_t& a_notificatio
 	}
 }
 
-bool notification_center::post_notification(const int a_notification, std::any& a_payload) const
+template <typename ...ARGS>
+bool notification_center<ARGS...>::post_notification(const int a_notification, ARGS... args) const
 {
 	std::lock_guard a_lock(m_mutex_);
 	if (const auto a_notification_iterator = m_observers_.find(a_notification);
@@ -98,7 +105,7 @@ bool notification_center::post_notification(const int a_notification, std::any& 
 		for (const auto& [callback] : a_notification_list)
 		{
 			// ReSharper disable once CppExpressionWithoutSideEffects
-			callback(a_payload);
+			callback(args...);
 		}
 		return true;
 	}
@@ -109,16 +116,9 @@ bool notification_center::post_notification(const int a_notification, std::any& 
 	}
 }
 
-bool notification_center::post_notification(int a_notification) const
-{
-	auto fake = nullptr;
-	auto payload = std::make_any<std::nullptr_t>(fake);
-	return post_notification(a_notification, payload);
-}
-
-
-bool notification_center::post_notification(notification_const_itr_t& a_notification, std::any&
-	a_payload) const
+template <typename ...ARGS>
+bool notification_center<ARGS...>::post_notification(
+		notification_const_itr_t& a_notification, ARGS... args) const
 {
 	std::lock_guard a_lock(m_mutex_);
 	if (a_notification != m_observers_.end())
@@ -127,7 +127,7 @@ bool notification_center::post_notification(notification_const_itr_t& a_notifica
 		for (const auto& [callback] : a_notification_list)
 		{
 			// ReSharper disable once CppExpressionWithoutSideEffects
-			callback(a_payload);
+			callback(args...);
 		}
 		return true;
 	}
@@ -138,14 +138,16 @@ bool notification_center::post_notification(notification_const_itr_t& a_notifica
 	}
 }
 
-bool notification_center::post_notification(notification_center::notification_const_itr_t &a_notification) const
+template <typename ...ARGS>
+bool notification_center<ARGS...>::post_notification(notification_center::notification_const_itr_t &a_notification) const
 {
 	auto fake = nullptr;
 	auto payload = std::make_any<std::nullptr_t>(fake);
 	return post_notification(a_notification, payload);
 }
 
-notification_center::notification_itr_t notification_center::get_notification_iterator(const int a_notification)
+template <typename ...ARGS>
+typename notification_center<ARGS...>::notification_itr_t notification_center<ARGS...>::get_notification_iterator(const int a_notification)
 {
 	notification_itr_t a_return_value;
 	if (m_observers_.find(a_notification) != m_observers_.end())
@@ -156,7 +158,8 @@ notification_center::notification_itr_t notification_center::get_notification_it
 	return a_return_value;
 }
 
-notification_center& notification_center::default_notification_center()
+template <typename ...ARGS>
+notification_center<ARGS...>& notification_center<ARGS...>::default_notification_center()
 {
 	// Guaranteed to be destroyed. Instantiated on first use.
 	// ReSharper disable once CommentTypo

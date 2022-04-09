@@ -1,6 +1,6 @@
 # Notifly - A simple notification center in pure C++
 
-This project is originally forked from https://github.com/Geenz/CPP-NotificationCenter which is not maintained anymore.
+This project was originally forked from https://github.com/Geenz/CPP-NotificationCenter which is not maintained anymore.
 
 A C++ API inspired by Cocoa's NSNotificationCenter API.
 

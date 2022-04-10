@@ -1,10 +1,9 @@
 /*
  *  NotificationCenter.cpp
- *  Notification Center CPP
+ *  Notifly
  *
- *  Created by Jonathan Goodman on 11/23/13.
- *  Copyright (c) 2013 Jonathan Goodman. All rights reserved.
- *  Edited by Salvatore Rivieccio.
+ *  Originally created by Jonathan Goodman on 11/23/13.
+ *  Copyright (c) 2019 Salvatore Rivieccio. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -26,11 +25,12 @@
  */
 
 #include <utility>
+#include <thread>
 
 #include "NotificationCenter.h"
 
 notification_center::notification_tuple_t notification_center::add_observer(
-	const int a_name, std::function<std::any(std::any&)> a_method)
+	const int a_name, std::function<std::any(std::any)> a_method)
 {
 	std::lock_guard a_lock(m_mutex_);
 	notification_observer a_notification_observer;
@@ -40,7 +40,7 @@ notification_center::notification_tuple_t notification_center::add_observer(
 }
 
 notification_center::observer_const_itr_t notification_center::add_observer(
-	notification_itr_t& a_notification, std::function<std::any(std::any&)> a_method)
+	notification_itr_t& a_notification, std::function<std::any(std::any)> a_method)
 {
 	std::lock_guard a_lock(m_mutex_);
 	auto a_return_value = a_notification->second.end();
@@ -88,17 +88,25 @@ void notification_center::remove_all_observers(notification_itr_t& a_notificatio
 	}
 }
 
-bool notification_center::post_notification(const int a_notification, std::any& a_payload) const
+bool notification_center::post_notification(const int a_notification, std::any a_payload, bool a_sync) const
 {
 	std::lock_guard a_lock(m_mutex_);
 	if (const auto a_notification_iterator = m_observers_.find(a_notification);
 		a_notification_iterator != m_observers_.end())
 	{
 		const auto& a_notification_list = a_notification_iterator->second;
-		for (const auto& [callback] : a_notification_list)
+		for (const auto& callback : a_notification_list)
 		{
-			// ReSharper disable once CppExpressionWithoutSideEffects
-			callback(a_payload);
+			if(a_sync)
+			{
+				// ReSharper disable once CppExpressionWithoutSideEffects
+				callback.m_callback(a_payload);
+			}
+			else
+			{
+				std::thread a_thread([=]() { return callback.m_callback(a_payload); });
+				a_thread.detach();
+			}
 		}
 		return true;
 	}
@@ -109,24 +117,24 @@ bool notification_center::post_notification(const int a_notification, std::any& 
 	}
 }
 
-bool notification_center::post_notification(int a_notification) const
-{
-	std::any payload;
-	return post_notification(a_notification, payload);
-}
-
-
-bool notification_center::post_notification(notification_itr_t& a_notification, std::any&
-	a_payload) const
+bool notification_center::post_notification(notification_itr_t& a_notification, std::any a_payload, bool a_sync) const
 {
 	std::lock_guard a_lock(m_mutex_);
 	if (a_notification != m_observers_.end())
 	{
 		const auto& a_notification_list = a_notification->second;
-		for (const auto& [callback] : a_notification_list)
+		for (const auto& callback : a_notification_list)
 		{
-			// ReSharper disable once CppExpressionWithoutSideEffects
-			callback(a_payload);
+			if(a_sync)
+			{
+				// ReSharper disable once CppExpressionWithoutSideEffects
+				callback.m_callback(a_payload);
+			}
+			else
+			{
+				std::thread a_thread([=]() { return callback.m_callback(a_payload); });
+				a_thread.detach();
+			}
 		}
 		return true;
 	}
@@ -135,12 +143,6 @@ bool notification_center::post_notification(notification_itr_t& a_notification, 
 		printf("WARNING: Notification \"%d\" does not exist.\n", a_notification->first);
 		return false;
 	}
-}
-
-bool notification_center::post_notification(notification_center::notification_itr_t &a_notification) const
-{
-	std::any payload;
-	return post_notification(a_notification, payload);
 }
 
 notification_center::notification_itr_t notification_center::get_notification_iterator(const int a_notification)

@@ -1,10 +1,9 @@
 /*
  *  NotificationCenter.h
- *  Notification Center CPP
+ *  Notifly
  *
- *  Created by Jonathan Goodman on 11/23/13.
- *  Copyright (c) 2013 Jonathan Goodman. All rights reserved.
- *  Edited by Salvatore Rivieccio.
+ *  Originally created by Jonathan Goodman on 11/23/13.
+ *  Copyright (c) 2019 Salvatore Rivieccio. All rights reserved.
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -34,7 +33,7 @@
 
 struct notification_observer
 {
-    std::function<std::any(std::any&)> m_callback;
+	std::function<std::any(std::any)> m_callback;
 };
 
 class notification_center
@@ -52,7 +51,7 @@ public:
     notification_tuple_t add_observer
 	(
 		int a_name,       				    ///< The name of the notification you wish to observe.
-		std::function<std::any(std::any&)> a_method	///< The function callback.  Accepts unsigned int(std::any) methods or lambdas.
+		std::function<std::any(std::any)> a_method	///< The function callback.  Accepts unsigned any(any) methods or lambdas.
 	);
 
     /**
@@ -61,7 +60,7 @@ public:
     observer_const_itr_t add_observer
 	(
 		notification_itr_t& a_notification,				///< The name of the notification you wish to observe.
-		std::function<std::any(std::any&)> a_method	    ///< The function callback.  Accepts unsigned int(std::any) methods or lambdas.
+		std::function<std::any(std::any)> a_method	    ///< The function callback.  Accepts unsigned any(any) methods or lambdas.
 	);
 
     /**
@@ -78,7 +77,7 @@ public:
     void remove_observer
 	(
 		notification_itr_t& a_notification,	///< The iterator of the notification you wish to remove a given observer from.
-		observer_const_itr_t& a_observer		///< The iterator to the observer you wish to remove.
+		observer_const_itr_t& a_observer	///< The iterator to the observer you wish to remove.
 	);
 
     /**
@@ -104,18 +103,10 @@ public:
      */
     bool post_notification
 	(
-		int a_notification,			///< The name of the notification you wish to post.
-		std::any& a_payload			///< The payload associated with the specified notification. nullptr by default.
-	) const;
-
-	/**
-     * This method posts a notification to a set of observers.
-     * If successful, this function calls all callbacks associated with that notification and return true.
-	 * If no such notification exists, this function will print a warning to the console and return false.
-     */
-	bool post_notification
-	(
-		int a_notification			///< The name of the notification you wish to post.
+		int a_notification,					///< The name of the notification you wish to post.
+		std::any a_payload = std::any(),	///< The payload associated with the specified notification. nullptr by default.
+		bool a_sync = true					///< If true, this function will run in the same thread as the caller.
+											///< If false, this function will run in a separate thread.
 	) const;
 
     /**
@@ -126,22 +117,15 @@ public:
     bool post_notification
 	(
 		notification_itr_t& a_notification,	///< The name of the notification you wish to post.
-		std::any& a_payload						///< The payload associated with the specified notification. nullptr by default.
-	) const;
-
-	/**
-     * This method posts a notification to a set of observers.
-     * If successful, this function calls all callbacks associated with that notification and return true.
-	 * If no such notification exists, this function will print a warning to the console and return false.
-     */
-	bool post_notification
-	(
-		notification_itr_t& a_notification	///< The name of the notification you wish to post.
+		std::any a_payload = std::any(),	///< The payload associated with the specified notification. nullptr by default.
+		bool a_sync = true					///< If true, this function will run in the same thread as the caller.
+											///< If false, this function will run in a separate thread.
 	) const;
 
     /**
      * This method retrieves a notification iterator for a named notification.
-     * The returned iterator may be used with the overloaded variants of postNotification, removeAllObservers, removeObserver, and addObserver to avoid string lookups.
+     * The returned iterator may be used with the overloaded variants of postNotification, removeAllObservers,
+     * removeObserver, and addObserver to avoid string lookups.
      */
     notification_itr_t get_notification_iterator
 	(
@@ -149,12 +133,13 @@ public:
 	);
 
     /**
-     * This method returns the default global notification center.  You may alternatively create your own notification center without using the default notification center.
+     * This method returns the default global notification center.  You may alternatively create your own notification
+     * center without using the default notification center.
      */
     static notification_center& default_notification_center();
 
 private:
-	static std::shared_ptr<notification_center> m_default_center_;
+	[[maybe_unused]] static std::shared_ptr<notification_center> m_default_center_;
     std::unordered_map<int, std::list<notification_observer> > m_observers_;
 	typedef std::recursive_mutex mutex_t;
     mutable mutex_t m_mutex_;

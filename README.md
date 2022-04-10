@@ -1,4 +1,4 @@
-# Notifly - A simple notification center in pure C++
+# Notifly - A simple notification center in pure C++ - NOW ASYNCHRONOUS TOO!
 
 This project was originally forked from https://github.com/Geenz/CPP-NotificationCenter which is not maintained anymore.
 
@@ -50,7 +50,8 @@ Posting notifications can be done with `notification_center::post_notification`,
 ```C++
 notification_center::default_notification_center().post_notification("My Observer");
 ```
-
+Using the third parameter `a_sync`, you can set the function to be called inside the same thread or in a separate one. It 
+is set to `true` by default.
 ### Avoiding Unnecessary Lookups
 
 Notifications can be posted and modified by either string or iterator. Posting or modifying by string incurs a string

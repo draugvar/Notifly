@@ -55,18 +55,17 @@ enum message
 
 void run_notification()
 {
-	auto lambda = [](std::any& any) -> std::any
+	auto lambda = [](std::any any) -> std::any
 	{
 		if(any.has_value())
 		{
-			auto message = std::any_cast<int>(any);
-			printf("Received notification %d!\n", message++);
-			any = std::make_any<int>(message);
+			auto message = std::any_cast<int*>(any);
+			printf("Received notification %d!\n", (*message)++);
 			return 0;
 		}
 		else
 		{
-			printf("No value!\n");
+			printf("No payload!\n");
 			return 1;
 		}
 	};
@@ -101,16 +100,16 @@ void run_notification()
 
 	notification_center::default_notification_center().add_observer(
 		poster,
-		[=](std::any&) -> unsigned int
+		[](const std::any&) -> unsigned int
 		{
-			printf("Received notification %d!\n", 8);
+			printf("Received notification, but idc of payload...\n");
 			return 0;
 		});
 
 	auto value = 1;
-	auto payload = std::make_any<int>(value);
-	notification_center::default_notification_center().post_notification(poster, payload);
-
+	auto payload = std::make_any<int*>(&value);
+	notification_center::default_notification_center().post_notification(poster, payload, false);
+	printf("Value is %d\n", value);
 	printf("============\n");
 
 	notification_center::default_notification_center().remove_observer(i1);

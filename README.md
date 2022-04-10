@@ -6,11 +6,11 @@ A C++ API inspired by Cocoa's NSNotificationCenter API.
 
 ## Usage
 
-Using NotificationCenter is simple. In order to use the default center, simply use the static
+Using `Notifly` is simple. In order to use the default center, simply use the static
 method `notification_center::default_notification_center()` like so:
 
 ```C++
-notification_center::default_notification_center().add_observer([=]{printf("Hello world!\n");}, "My Observer");
+notification_center::default_notification_center().add_observer(1, [=]{printf("Hello world!\n");});
 ```
 
 NotificationCenter is intended to be included directly in your projects, as such no library (dynamic or static) is
@@ -31,14 +31,15 @@ std::unordered_map
 ### Adding Observers
 
 Adding observers is a simple porcess. Simply invoke the method `notification_center::add_observer` on your
-NotificationCenter passing in a function pointer and string for the notification that this observer should respond to. A
+NotificationCenter passing in a function pointer and integer ID for the notification that this observer should respond to. A
 couple of examples of how to do this are:
 
 ```C++
-notification_center::default_notification_center().add_observer([=]{printf("Hello world!\n");}, "My Observer");
-notification_center::default_notification_center().add_observer(helloWorldFunc, "My Observer");
+#define MY_NOTIFICATION_ID 1
+notification_center::default_notification_center().add_observer(MY_NOTIFICATION_ID, [=]{printf("Hello world!\n");});
+notification_center::default_notification_center().add_observer(MY_NOTIFICATION_ID, helloWorldFunc);
 Foo myFoo;
-notification_center::default_notification_center().add_observer(std::bind(&Foo::func, myFoo), "My Observer");
+notification_center::default_notification_center().add_observer(MY_NOTIFICATION_ID, std::bind(&Foo::func, myFoo));
 ```
 
 Currently, only `std::any(std::any)` function signatures are supported.
@@ -48,19 +49,17 @@ Currently, only `std::any(std::any)` function signatures are supported.
 Posting notifications can be done with `notification_center::post_notification`, like so:
 
 ```C++
-notification_center::default_notification_center().post_notification("My Observer");
+notification_center::default_notification_center().post_notification(MY_NOTIFICATION_ID);
 ```
 Using the third parameter `a_sync`, you can set the function to be called inside the same thread or in a separate one. It 
 is set to `true` by default.
 ### Avoiding Unnecessary Lookups
 
-Notifications can be posted and modified by either string or iterator. Posting or modifying by string incurs a string
-lookup, which depending on the application may not be ideal. For these situations, the best option when using
-NotificationCenter is to post and modify by iterator. An example of how to do this is:
+Notifications can be posted and modified by either integer or iterator:
 
 ```C++
-auto notiItr = notification_center::default_notification_center().get_notification_iterator("My Observer");
-notification_center::default_notification_center().add_observer([=]{printf("I'm being posted by an iterator!\n");}, notiItr);
+auto notiItr = notification_center::default_notification_center().get_notification_iterator(MY_NOTIFICATION_ID);
+notification_center::default_notification_center().add_observer(notiItr, [=]{printf("I'm being posted by an iterator!\n");});
 notification_center::default_notification_center().post_notification(notiItr);
 ```
 
@@ -85,4 +84,4 @@ and make a pull request.
 
 ## License
 
-NotificationCenter is licensed under the MIT license.
+Notifly is licensed under the MIT license.

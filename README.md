@@ -23,9 +23,9 @@ NotificationCenter requires a compiler that supports the following C++17 APIs:
 ```C++
 std::mutex
 std::function
-std::bind
 std::shared_ptr
 std::any
+std::unordered_map
 ```
 
 ### Adding Observers

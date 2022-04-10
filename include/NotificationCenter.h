@@ -103,10 +103,10 @@ public:
      */
     bool post_notification
 	(
-		int a_notification,					///< The name of the notification you wish to post.
-		std::any a_payload = std::any(),	///< The payload associated with the specified notification. nullptr by default.
-		bool a_sync = true					///< If true, this function will run in the same thread as the caller.
-											///< If false, this function will run in a separate thread.
+		int a_notification,						///< The name of the notification you wish to post.
+		const std::any a_payload = std::any(),	///< The payload associated with the specified notification.
+		bool a_sync = true						///< If true, this function will run in the same thread as the caller.
+												///< If false, this function will run in a separate thread.
 	) const;
 
     /**
@@ -116,10 +116,10 @@ public:
      */
     bool post_notification
 	(
-		notification_itr_t& a_notification,	///< The name of the notification you wish to post.
-		std::any a_payload = std::any(),	///< The payload associated with the specified notification. nullptr by default.
-		bool a_sync = true					///< If true, this function will run in the same thread as the caller.
-											///< If false, this function will run in a separate thread.
+		notification_itr_t& a_notification,		///< The name of the notification you wish to post.
+		const std::any a_payload = std::any(),	///< The payload associated with the specified notification.
+		bool a_sync = true						///< If true, this function will run in the same thread as the caller.
+												///< If false, this function will run in a separate thread.
 	) const;
 
     /**

@@ -88,7 +88,7 @@ void notification_center::remove_all_observers(notification_itr_t& a_notificatio
 	}
 }
 
-bool notification_center::post_notification(const int a_notification, std::any a_payload, bool a_sync) const
+bool notification_center::post_notification(const int a_notification, const std::any a_payload, bool a_sync) const
 {
 	std::lock_guard a_lock(m_mutex_);
 	if (const auto a_notification_iterator = m_observers_.find(a_notification);
@@ -117,7 +117,7 @@ bool notification_center::post_notification(const int a_notification, std::any a
 	}
 }
 
-bool notification_center::post_notification(notification_itr_t& a_notification, std::any a_payload, bool a_sync) const
+bool notification_center::post_notification(notification_itr_t& a_notification, const std::any a_payload, bool a_sync) const
 {
 	std::lock_guard a_lock(m_mutex_);
 	if (a_notification != m_observers_.end())

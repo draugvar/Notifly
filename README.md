@@ -30,7 +30,7 @@ std::unordered_map
 
 ### Adding Observers
 
-Adding observers is a simple porcess. Simply invoke the method `notification_center::add_observer` on your
+Adding observers is a simple process. Simply invoke the method `notification_center::add_observer` on your
 NotificationCenter passing in a function pointer and integer ID for the notification that this observer should respond to. A
 couple of examples of how to do this are:
 

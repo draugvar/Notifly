@@ -26,7 +26,7 @@
  */
 
  // ReSharper disable CppExpressionWithoutSideEffects
-#include "NotificationCenter.h"
+#include "notifly.h"
 
 struct point
 {
@@ -70,35 +70,35 @@ void run_notification()
 		}
 	};
 
-	auto i1 = notification_center::default_notification_center().add_observer(
+	auto i1 = notifly::default_notifly().add_observer(
 		poster,
 		lambda);
 
-	auto i2 = notification_center::default_notification_center().add_observer(
+	auto i2 = notifly::default_notifly().add_observer(
 		poster,
 		lambda);
 
-	auto i3 = notification_center::default_notification_center().add_observer(
+	auto i3 = notifly::default_notifly().add_observer(
 		poster,
 		lambda);
 
-	auto i4 = notification_center::default_notification_center().add_observer(
+	auto i4 = notifly::default_notifly().add_observer(
 		poster,
 		lambda);
 
-	auto i5 = notification_center::default_notification_center().add_observer(
+	auto i5 = notifly::default_notifly().add_observer(
 		poster,
 		lambda);
 
-	notification_center::default_notification_center().add_observer(
+	notifly::default_notifly().add_observer(
 		poster,
 		lambda);
 
-	notification_center::default_notification_center().add_observer(
+	notifly::default_notifly().add_observer(
 		poster,
 		lambda);
 
-	notification_center::default_notification_center().add_observer(
+	notifly::default_notifly().add_observer(
 		poster,
 		[](const std::any&) -> unsigned int
 		{
@@ -108,65 +108,72 @@ void run_notification()
 
 	auto value = 1;
 	auto payload = std::make_any<int*>(&value);
-	notification_center::default_notification_center().post_notification(poster, payload, false);
+	notifly::default_notifly().post_notification(poster, payload, true);
 	printf("Value is %d\n", value);
 	printf("============\n");
 
-	notification_center::default_notification_center().remove_observer(i1);
+	notifly::default_notifly().add_observer(
+		0x80,
+		[](const std::any&) -> unsigned int
+		{
+			printf("Received ASYNC notification, but idc of payload...\n");
+			return 0;
+		});
 
-	notification_center::default_notification_center().post_notification(poster);
+	notifly::default_notifly().post_notification(0x80, std::any(), true);
 
-	printf("============\n");
+	notifly::default_notifly().remove_observer(i1);
 
-	notification_center::default_notification_center().remove_observer(i2);
-
-	notification_center::default_notification_center().post_notification(poster);
-
-	printf("============\n");
-
-	notification_center::default_notification_center().remove_observer(i3);
-
-	notification_center::default_notification_center().post_notification(poster);
+	notifly::default_notifly().post_notification(poster);
 
 	printf("============\n");
 
-	notification_center::default_notification_center().remove_observer(i4);
+	notifly::default_notifly().remove_observer(i2);
 
-	notification_center::default_notification_center().post_notification(poster);
-
-	printf("============\n");
-
-	notification_center::default_notification_center().remove_observer(i5);
-
-	notification_center::default_notification_center().post_notification(poster);
+	notifly::default_notifly().post_notification(poster);
 
 	printf("============\n");
 
-	notification_center::default_notification_center().remove_all_observers(poster);
+	notifly::default_notifly().remove_observer(i3);
 
-	notification_center::default_notification_center().post_notification(poster);
+	notifly::default_notifly().post_notification(poster);
 
 	printf("============\n");
 
-	notification_center::default_notification_center().add_observer(
+	notifly::default_notifly().remove_observer(i4);
+
+	notifly::default_notifly().post_notification(poster);
+
+	printf("============\n");
+
+	notifly::default_notifly().remove_observer(i5);
+
+	notifly::default_notifly().post_notification(poster);
+
+	printf("============\n");
+
+	notifly::default_notifly().remove_all_observers(poster);
+
+	notifly::default_notifly().post_notification(poster);
+
+	printf("============\n");
+
+	notifly::default_notifly().add_observer(
 		second_poster,
 		[=](const std::any&) -> unsigned int
 		{
 			printf("Called by iterator!\n");
 			return 0;
 		});
-	auto itr = notification_center::default_notification_center().get_notification_iterator(second_poster);
-	notification_center::default_notification_center().post_notification(itr);
-	printf("============\n");
 
 	struct point a_point { 1, 1 };
 	printf("Point x.value = %d\n", a_point.x);
 	printf("Point y.value = %d\n", a_point.y);
-	notification_center::default_notification_center().add_observer(
+	notifly::default_notifly().add_observer(
 		second_poster,
 		std::bind(&foo::func, &a_point, 1));  // NOLINT(modernize-avoid-bind)
 
-	notification_center::default_notification_center().post_notification(second_poster);
+	notifly::default_notifly().post_notification(second_poster);
 	printf("Point x.value = %d\n", a_point.x);
 	printf("Point y.value = %d\n", a_point.y);
 }

@@ -1,14 +1,13 @@
 cmake_minimum_required(VERSION 3.16)
-project(NotificationCenter++)
+project(notifly)
 
 set(CMAKE_CXX_STANDARD 20)
 
-include_directories(src)
 include_directories(include)
 
-add_executable(NotificationCenter++
+add_executable(${PROJECT_NAME}
         src/main.cpp
-        src/NotificationCenter.cpp)
+        src/notifly.cpp)
 
-set_target_properties(NotificationCenter++ PROPERTIES LINKER_LANGUAGE CXX)
-target_compile_features(NotificationCenter++ PUBLIC cxx_std_20)
+set_target_properties(${PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
+target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)

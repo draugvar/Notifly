@@ -6,19 +6,19 @@ A C++ API inspired by Cocoa's NSNotificationCenter API.
 
 ## Usage
 
-Using `Notifly` is simple. In order to use the default center, simply use the static
-method `Notifly::default_notifly()` like so:
+Using `notifly` is simple. In order to use the default center, simply use the static
+method `notifly::default_notifly()` like so:
 
 ```C++
-Notifly::default_notifly().add_observer(1, [=]{printf("Hello world!\n");});
+notifly::default_notifly().add_observer(1, [=]{printf("Hello world!\n");});
 ```
 
-NotificationCenter is intended to be included directly in your projects, as such no library (dynamic or static) is
+Notifly is intended to be included directly in your projects, as such no library (dynamic or static) is
 provided.
 
 ### Supported Compilers
 
-NotificationCenter requires a compiler that supports the following C++17 APIs:
+Notifly requires a compiler that supports the following C++17 APIs:
 
 ```C++
 std::mutex
@@ -30,41 +30,38 @@ std::unordered_map
 
 ### Adding Observers
 
-Adding observers is a simple process. Simply invoke the method `Notifly::add_observer` on your
-NotificationCenter passing in a function pointer and integer ID for the notification that this observer should respond to. A
-couple of examples of how to do this are:
+Adding observers is a simple process. Simply invoke the method `notifly::add_observer` passing in a function pointer and integer ID for the notification that this observer should respond to. 
+
+A couple of examples of how to do this are:
 
 ```C++
 #define MY_NOTIFICATION_ID 1
-Notifly::default_notifly().add_observer(MY_NOTIFICATION_ID, [=]{printf("Hello world!\n");});
-Notifly::default_notifly().add_observer(MY_NOTIFICATION_ID, helloWorldFunc);
+notifly::default_notifly().add_observer(MY_NOTIFICATION_ID, [=]{printf("Hello world!\n");});
+notifly::default_notifly().add_observer(MY_NOTIFICATION_ID, helloWorldFunc);
 Foo myFoo;
-Notifly::default_notifly().add_observer(MY_NOTIFICATION_ID, std::bind(&Foo::func, myFoo));
+notifly::default_notifly().add_observer(MY_NOTIFICATION_ID, std::bind(&Foo::func, myFoo));
 ```
 
 Currently, only `std::any(std::any)` function signatures are supported.
 
 ### Posting Notifications
 
-Posting notifications can be done with `Notifly::post_notification`, like so:
+Posting notifications can be done with `notifly::post_notification`, like so:
 
 ```C++
-Notifly::default_notifly().post_notification(MY_NOTIFICATION_ID);
+notifly::default_notifly().post_notification(MY_NOTIFICATION_ID);
 ```
-Using the third parameter `a_async`, you can set the function to be called inside the same thread or in a separate one. It 
+Using the third parameter `a_async`, you can set the function to be called inside a different thread or in same of the caller. It 
 is set to `false` by default.
+
 ### Avoiding Unnecessary Lookups
 
-Notifications can be posted and modified by either integer or iterator:
+Notifications can be posted and modified by using the unique indentifier returned when add observer is called:
 
 ```C++
-auto notiItr = Notifly::default_notifly().get_notification_iterator(MY_NOTIFICATION_ID);
-Notifly::default_notifly().add_observer(notiItr, [=]{printf("I'm being posted by an iterator!\n");});
-Notifly::default_notifly().post_notification(notiItr);
+auto observerId = notifly::default_notifly().add_observer([Notification ID], [=]{printf("I'm being posted by an iterator!\n");});
+notifly::default_notifly().remove_observer(observerId);
 ```
-
-`Notifly::add_observer`, `Notifly::remove_observer`, `Notifly::remove_all_observers`,
-and `Notifly::post_notification` all support notification iterators in overloaded methods.
 
 ### Multiple NotificationCenters
 

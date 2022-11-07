@@ -74,6 +74,8 @@ void run_notification()
 		poster,
 		lambda);
 
+	notifly::default_notifly().remove_observer(i1);
+
 	auto i2 = notifly::default_notifly().add_observer(
 		poster,
 		lambda);

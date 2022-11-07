@@ -46,6 +46,8 @@ uint64_t notifly::add_observer(int a_name, std::function<std::any(std::any)> a_m
 
 void notifly::remove_observer(uint64_t a_observer)
 {
+	if(!m_observers_by_id.contains(a_observer)) return;
+
 	auto tuple = m_observers_by_id.at(a_observer);
 
 	remove_observer(tuple);

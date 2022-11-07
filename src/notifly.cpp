@@ -29,9 +29,11 @@
 
 #include "notifly.h"
 
+#define N_THREADS 10
+
 notifly::notifly() : m_ids_(0)
 {
-	m_thread_pool_.resize(static_cast<int>(std::thread::hardware_concurrency()/10));
+	m_thread_pool_.resize(N_THREADS);
 }
 
 uint64_t notifly::add_observer(int a_name, std::function<std::any(std::any)> a_method)

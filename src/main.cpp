@@ -50,7 +50,8 @@ public:
 enum message
 {
 	poster,
-	second_poster
+	second_poster,
+	third_poster
 };
 
 void run_notification()
@@ -109,20 +110,23 @@ void run_notification()
 		});
 
 	auto value = 1;
+	printf("I'm sending an int that has value %d\n", value);
 	auto payload = std::make_any<int*>(&value);
-	notifly::default_notifly().post_notification(poster, payload, true);
-	printf("Value is %d\n", value);
+	notifly::default_notifly().post_notification(poster, payload);
+	printf("After post value is %d\n", value);
 	printf("============\n");
 
 	notifly::default_notifly().add_observer(
-		0x80,
+		third_poster,
 		[](const std::any&) -> unsigned int
 		{
 			printf("Received ASYNC notification, but idc of payload...\n");
 			return 0;
 		});
 
-	notifly::default_notifly().post_notification(0x80, std::any(), true);
+	// Resizing thread pool
+	notifly::default_notifly().resize_thread_pool(10);
+	notifly::default_notifly().post_notification(third_poster, std::any(), true);
 
 	notifly::default_notifly().remove_observer(i1);
 
@@ -164,7 +168,7 @@ void run_notification()
 		second_poster,
 		[=](const std::any&) -> unsigned int
 		{
-			printf("Called by iterator!\n");
+			printf("Called!\n");
 			return 0;
 		});
 

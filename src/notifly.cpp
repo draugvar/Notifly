@@ -29,12 +29,8 @@
 
 #include "notifly.h"
 
-#define N_THREADS 10
-
-notifly::notifly() : m_ids_(0)
-{
-	m_thread_pool_.resize(N_THREADS);
-}
+notifly::notifly() : m_ids_(0), m_thread_pool_(1) // Default thread-pool initialization to just 1 thread
+{}
 
 uint64_t notifly::add_observer(int a_name, std::function<std::any(std::any)> a_method)
 {
@@ -144,6 +140,12 @@ bool notifly::post_notification(const int a_notification, const std::any& a_payl
 	}
 }
 
+void notifly::resize_thread_pool(int a_threads)
+{
+	m_thread_pool_.push([this, a_threads](int id) { this->m_thread_pool_.resize(a_threads); });
+}
+
+
 bool notifly::post_notification(notification_itr_t& a_notification, const std::any& a_payload, bool a_async)
 {
 	std::lock_guard a_lock(m_mutex_);
@@ -190,4 +192,3 @@ notifly& notifly::default_notifly()
 
 	return a_notification;
 }
-

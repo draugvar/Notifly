@@ -90,6 +90,14 @@ public:
 											///< If false, this function will run in a separate thread.
 	);
 
+	/**
+     * This method is used to resize the threads number in the thread-pool
+     */
+	void resize_thread_pool
+	(
+			int a_threads	///< Number of threads
+	);
+
     /**
      * This method returns the default global notification center.  You may alternatively create your own notification
      * center without using the default notification center.

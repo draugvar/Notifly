@@ -54,6 +54,12 @@ enum message
 	third_poster
 };
 
+int sum(int a, int b)
+{
+    printf("Sum is %d\n", a + b);
+    return a + b;
+}
+
 void run_notification()
 {
 	auto lambda = [](std::any any) -> std::any
@@ -182,6 +188,9 @@ void run_notification()
 	notifly::default_notifly().post_notification(second_poster);
 	printf("Point x.value = %d\n", a_point.x);
 	printf("Point y.value = %d\n", a_point.y);
+
+    notifly::default_notifly().add_observer_temp(55, sum);
+    notifly::default_notifly().post_notification_temp<int, int>(55, 5, 10, true);
 }
 
 int main()

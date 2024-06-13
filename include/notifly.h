@@ -61,6 +61,25 @@ public:
 			std::function<std::any(std::any)> a_method	///< The function callback. Accepts unsigned any(any) methods or lambdas.
 	);
 
+    /**
+    * This method adds a function callback as an observer to a named notification.
+    */
+    template<typename Return, typename ...Args>
+    uint64_t add_observer_temp
+    (
+            int a_name,       				    ///< The name of the notification you wish to observe.
+            Return(*a_method)(Args... args)     ///< The function callback. Accepts unsigned any(any) methods or lambdas.
+    )
+    {
+        auto lambda = [=](std::any any) -> std::any
+        {
+            auto message = std::any_cast<std::tuple<Args...>>(any);
+            return std::apply(a_method, message);
+        };
+
+        return add_observer(a_name, lambda);
+    }
+
 	/**
 	 * This method removes an observer by iterator.
 	 */
@@ -89,6 +108,24 @@ public:
 		bool a_async = false					///< If false, this function will run in the same thread as the caller.
 											///< If false, this function will run in a separate thread.
 	);
+
+    /**
+     * This method posts a notification to a set of observers.
+     * If successful, this function calls all callbacks associated with that notification and return true.
+	 * If no such notification exists, this function will print a warning to the console and return false.
+     */
+    template<typename ...Args>
+    bool post_notification_temp
+    (
+            int a_notification,		///< The name of the notification you wish to post.
+            Args... args,           ///< The payload associated with the specified notification.
+            bool a_async = false	///< If false, this function will run in the same thread as the caller.
+                                    ///< If true, this function will run in a separate thread.
+    )
+    {
+        auto payload = std::make_any<std::tuple<Args...>>(std::make_tuple(args...));
+        return post_notification(a_notification, payload, a_async);
+    }
 
 	/**
      * This method is used to resize the threads number in the thread-pool

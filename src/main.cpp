@@ -190,7 +190,11 @@ void run_notification()
 	printf("Point y.value = %d\n", a_point.y);
 
     notifly::default_notifly().add_observer_temp(55, sum);
-    notifly::default_notifly().post_notification_temp<int, int>(55, 5, 10, true);
+    auto ret = notifly::default_notifly().post_notification_temp<int, std::string>(55, 5, "ciao", false);
+    if(ret != 0)
+    {
+        printf("Error: %s\n", notifly::default_notifly().get_last_error().c_str());
+    }
 }
 
 int main()

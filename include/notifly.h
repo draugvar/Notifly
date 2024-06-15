@@ -71,10 +71,18 @@ public:
             Return(*a_method)(Args... args)     ///< The function callback. Accepts unsigned any(any) methods or lambdas.
     )
     {
-        auto lambda = [=](std::any any) -> std::any
+        auto lambda = [=, this](std::any any) -> std::any
         {
-            auto message = std::any_cast<std::tuple<Args...>>(any);
-            return std::apply(a_method, message);
+            try
+            {
+                auto message = std::any_cast<std::tuple<Args...>>(any);
+                return std::apply(a_method, message);
+            }
+            catch(const std::bad_any_cast& e)
+            {
+                set_last_error(e.what());
+                return {};
+            }
         };
 
         return add_observer(a_name, lambda);
@@ -126,6 +134,8 @@ public:
         auto payload = std::make_any<std::tuple<Args...>>(std::make_tuple(args...));
         return post_notification(a_notification, payload, a_async);
     }
+
+    std::string get_last_error() const;
 
 	/**
      * This method is used to resize the threads number in the thread-pool
@@ -204,6 +214,11 @@ private:
 			///< If false, this function will run in a separate thread.
 	);
 
+    void set_last_error
+    (
+            const std::string& a_error
+    );
+
 	/**
 	 * This method retrieves a notification iterator for a named notification.
 	 * The returned iterator may be used with the overloaded variants of postNotification, removeAllObservers,
@@ -224,4 +239,7 @@ private:
 	std::atomic_uint_fast64_t m_ids_;
 
 	tp::thread_pool m_thread_pool_;
+
+    std::mutex last_error_mutex_;
+    std::string m_last_error_;
 };

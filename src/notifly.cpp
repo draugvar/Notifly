@@ -192,3 +192,15 @@ notifly& notifly::default_notifly()
 
 	return a_notification;
 }
+
+std::string notifly::get_last_error() const
+{
+    std::lock_guard a_lock(m_mutex_);
+    return m_last_error_;
+}
+
+void notifly::set_last_error(const std::string &a_error)
+{
+    std::lock_guard a_lock(m_mutex_);
+    m_last_error_ = a_error;
+}

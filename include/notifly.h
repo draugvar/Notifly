@@ -32,6 +32,7 @@
 #include <list>
 #include <mutex>
 #include <any>
+#include <typeindex>
 
 struct notification_observer
 {
@@ -57,7 +58,7 @@ public:
      */
 	uint64_t add_observer
 	(
-			int a_name,       				    ///< The name of the notification you wish to observe.
+			int a_notification,       				    ///< The name of the notification you wish to observe.
 			std::function<std::any(std::any)> a_method	///< The function callback. Accepts unsigned any(any) methods or lambdas.
 	);
 
@@ -67,25 +68,24 @@ public:
     template<typename Return, typename ...Args>
     uint64_t add_observer_temp
     (
-            int a_name,       				    ///< The name of the notification you wish to observe.
-            Return(*a_method)(Args... args)     ///< The function callback. Accepts unsigned any(any) methods or lambdas.
+            int a_notification,       		    ///< The name of the notification you wish to observe.
+            Return(*a_method)(Args... args)     ///< The function callback.
     )
     {
-        auto lambda = [=, this](std::any any) -> std::any
+        auto lambda = [=](std::any any) -> std::any
         {
-            try
-            {
-                auto message = std::any_cast<std::tuple<Args...>>(any);
-                return std::apply(a_method, message);
-            }
-            catch(const std::bad_any_cast& e)
-            {
-                set_last_error(e.what());
-                return {};
-            }
+            auto message = std::any_cast<std::tuple<Args...>>(any);
+            return std::apply(a_method, message);
         };
 
-        return add_observer(a_name, lambda);
+        // Generate a unique string for the types of Args
+        std::string types;
+        (..., (types += std::type_index(typeid(Args)).name()));
+
+        // Save the types string in the map
+        m_payloads_types_[a_notification] = types;
+
+        return add_observer(a_notification, lambda);
     }
 
 	/**
@@ -101,7 +101,7 @@ public:
      */
     void remove_all_observers
 	(
-		int a_name	///< The name of the notification you wish to remove.
+		int a_notification	///< The name of the notification you wish to remove.
 	);
 
     /**
@@ -131,6 +131,17 @@ public:
                                     ///< If true, this function will run in a separate thread.
     )
     {
+        // Generate a unique string for the types of Args
+        std::string types;
+        (..., (types += std::type_index(typeid(Args)).name()));
+
+        // Check if the types string matches the one saved in the map
+        if (m_payloads_types_[a_notification] != types)
+        {
+            set_last_error("The payload types do not match the registered types");
+            return false;
+        }
+
         auto payload = std::make_any<std::tuple<Args...>>(std::make_tuple(args...));
         return post_notification(a_notification, payload, a_async);
     }
@@ -242,4 +253,6 @@ private:
 
     std::mutex last_error_mutex_;
     std::string m_last_error_;
+
+    std::unordered_map<int, std::string> m_payloads_types_;
 };

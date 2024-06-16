@@ -51,7 +51,8 @@ enum message
 {
 	poster,
 	second_poster,
-	third_poster
+	third_poster,
+    fourth_poster
 };
 
 int sum(int a, int b)
@@ -189,12 +190,21 @@ void run_notification()
 	printf("Point x.value = %d\n", a_point.x);
 	printf("Point y.value = %d\n", a_point.y);
 
-    notifly::default_notifly().add_observer_temp(55, sum);
-    auto ret = notifly::default_notifly().post_notification_temp<int, std::string>(55, 5, "ciao", false);
-    if(ret != 0)
+    notifly::default_notifly().add_observer_temp(fourth_poster, sum);
+    auto ret = notifly::default_notifly().post_notification_temp<int, std::string>(fourth_poster, 5, "ciao", false);
+    if(!ret)
     {
         printf("Error: %s\n", notifly::default_notifly().get_last_error().c_str());
     }
+    notifly::default_notifly().post_notification_temp<int, int>(fourth_poster, 5, 7, true);
+
+    ret = notifly::default_notifly().post_notification_temp<int, long>(fourth_poster, 5, 7000, true);
+    if(!ret)
+    {
+        printf("Error: %s\n", notifly::default_notifly().get_last_error().c_str());
+    }
+
+    notifly::default_notifly().remove_all_observers(fourth_poster);
 }
 
 int main()

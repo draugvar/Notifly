@@ -6,16 +6,16 @@
 
 #include "notifly.h"
 
-struct point
+typedef struct point_
 {
     int x, y;
-};
+} point;
 
 class foo
 {
 public:
     // ReSharper disable once CppMemberFunctionMayBeStatic
-    static unsigned int func(struct point* a_point, int a_value)
+    static unsigned int func(point* a_point, int a_value)
     {
         printf("Hello std::bind!\n");
         a_point->x = 11;
@@ -33,10 +33,16 @@ enum message
     fourth_poster
 };
 
-int sum(int a, int b)
+int sum_callback(int a, int b)
 {
     printf("Sum is %d\n", a + b);
     return a + b;
+}
+
+int print_struct(point* a_point)
+{
+    printf("Point x: %d, y: %d\n", a_point->x, a_point->y);
+    return 0;
 }
 
 TEST(notifly, add_observer)
@@ -65,36 +71,42 @@ TEST(notifly, add_observer)
 
 TEST(notifly, add_observer_temp)
 {
-    auto i1 = notifly::default_notifly().add_observer_temp(
-            poster,
-            sum);
+    auto i1 = notifly::default_notifly().add_observer_temp(poster, sum_callback);
+
+    auto ret = notifly::default_notifly().post_notification_temp<int, long>(poster, 5, 10);
+    if(!ret)
+    {
+        printf("Failed to post notification: %s\n", notifly::default_notifly().get_last_error().c_str());
+    }
 
     notifly::default_notifly().remove_observer(i1);
 }
 
-TEST(notifly, add_observer_and_post_message)
+TEST(notifly, add_observer_temp_struct)
 {
-    auto lambda = [](std::any any) -> std::any
+    auto i1 = notifly::default_notifly().add_observer_temp(poster, print_struct);
+
+    point a_point = {0, 0};
+    auto ret = notifly::default_notifly().post_notification_temp<point>(poster, a_point);
+    if(!ret)
     {
-        if(any.has_value())
-        {
-            auto message = std::any_cast<int*>(any);
-            printf("Received notification %d!\n", (*message)++);
-            return 0;
-        }
-        else
-        {
-            printf("No payload!\n");
-            return 1;
-        }
-    };
+        printf("Failed to post notification: %s\n", notifly::default_notifly().get_last_error().c_str());
+    }
 
-    auto i1 = notifly::default_notifly().add_observer(
-            poster,
-            lambda);
+    notifly::default_notifly().remove_observer(i1);
+}
 
-    int message = 0;
-    notifly::default_notifly().post_notification(poster, &message);
+TEST(notifly, struct_add_observer_and_post_message)
+{
+    auto i1 = notifly::default_notifly().add_observer_temp(poster, print_struct);
+
+    point p = {0, 0};
+    p.x = 10;
+    p.y = 20;
+
+    notifly::default_notifly().post_notification_temp<point*>(poster, &p, true);
+
+    std::this_thread::sleep_for(std::chrono::seconds(1));
 
     notifly::default_notifly().remove_observer(i1);
 }
@@ -106,13 +118,13 @@ TEST(notifly, lamda_and_post_message)
         return a + b;
     };
 
-    auto i1 = notifly::default_notifly().add_observer_temp(
-            poster,
-            lambda);
+    //auto i1 = notifly::default_notifly().add_observer_temp(
+    //        poster,
+    //        lambda);
 
-    notifly::default_notifly().post_notification_temp<int, int>(poster, 5, 10);
+    //notifly::default_notifly().post_notification_temp<int, int>(poster, 5, 10);
 
-    notifly::default_notifly().remove_observer(i1);
+    //notifly::default_notifly().remove_observer(i1);
 
 }
 

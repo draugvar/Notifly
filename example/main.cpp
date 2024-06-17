@@ -25,7 +25,7 @@
  * THE SOFTWARE.
  */
 
- // ReSharper disable CppExpressionWithoutSideEffects
+// ReSharper disable CppExpressionWithoutSideEffects
 #include "notifly.h"
 
 struct point

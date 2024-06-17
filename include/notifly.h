@@ -88,6 +88,32 @@ public:
         return add_observer(a_notification, lambda);
     }
 
+    /**
+   * This method adds a function callback as an observer to a named notification.
+   */
+    template<typename Return, typename ...Args>
+    uint64_t add_observer_temp
+    (
+            int a_notification,       		            ///< The name of the notification you wish to observe.
+            std::function<Return(Args ...)> a_method    ///< The function callback.
+    )
+    {
+        auto lambda = [=](std::any any) -> std::any
+        {
+            auto message = std::any_cast<std::tuple<Args...>>(any);
+            return std::apply(a_method, message);
+        };
+
+        // Generate a unique string for the types of Args
+        std::string types;
+        (..., (types += std::type_index(typeid(Args)).name()));
+
+        // Save the types string in the map
+        m_payloads_types_[a_notification] = types;
+
+        return add_observer(a_notification, lambda);
+    }
+
 	/**
 	 * This method removes an observer by iterator.
 	 */

@@ -45,7 +45,7 @@ int print_struct(point* a_point)
     return 0;
 }
 
-TEST(notifly, add_observer)
+TEST(notifly, lambda_add_observer)
 {
     auto lambda = [](std::any any) -> std::any
     {
@@ -62,15 +62,13 @@ TEST(notifly, add_observer)
         }
     };
 
-    auto i1 = notifly::default_notifly().add_observer(
-            poster,
-            lambda);
+    auto i1 = notifly::default_notifly().add_observer(poster,lambda);
 
     notifly::default_notifly().remove_observer(i1);
     ASSERT_EQ(0, 0);
 }
 
-TEST(notifly, add_observer_temp)
+TEST(notifly, func_add_observer)
 {
     auto i1 = notifly::default_notifly().add_observer(poster, sum_callback);
 
@@ -84,7 +82,7 @@ TEST(notifly, add_observer_temp)
     ASSERT_EQ(ret, false);
 }
 
-TEST(notifly, add_observer_temp_struct)
+TEST(notifly, add_observer_struct)
 {
     auto i1 = notifly::default_notifly().add_observer(poster, print_struct);
 
@@ -162,6 +160,54 @@ TEST(notifly, any_to_any)
     ASSERT_EQ(ret, true);
 }
 
+TEST(notifly, nothing_to_wrong_lambda)
+{
+    auto lambda = std::function<std::any(std::any)>([](const std::any& any) -> std::any
+    {
+        if(any.has_value())
+        {
+            return 0;
+        }
+        else
+        {
+            printf("No payload!\n");
+            return 1;
+        }
+    });
+
+    auto i1 = notifly::default_notifly().add_observer(poster, lambda);
+
+    auto ret = notifly::default_notifly().post_notification(poster);
+    ASSERT_EQ(ret, false);
+
+    notifly::default_notifly().remove_observer(i1);
+}
+
+TEST(notifly, nothing_to_lambda)
+{
+    auto lambda = std::function<std::any()>([]() -> std::any
+    {
+        printf("No payload!\n");
+        return 1;
+    });
+
+    auto i1 = notifly::default_notifly().add_observer(poster, lambda);
+
+    auto ret = notifly::default_notifly().post_notification(poster);
+    ASSERT_EQ(ret, true);
+
+    notifly::default_notifly().remove_observer(i1);
+}
+
+TEST(notifly, int_to_nothing)
+{
+    auto ret = notifly::default_notifly().post_notification<int>(poster, 5);
+    if(!ret)
+    {
+        printf("Failed to post notification: %s\n", notifly::default_notifly().get_last_error().c_str());
+    }
+    ASSERT_EQ(ret, false);
+}
 
 int main(int argc, char **argv)
 {

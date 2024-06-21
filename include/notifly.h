@@ -72,7 +72,7 @@ public:
             Return(*a_method)(Args... args)     ///< The function callback.
     )
     {
-        auto lambda = [=](std::any any) -> std::any
+        auto lambda = [a_method](std::any any) -> std::any
         {
             auto message = std::any_cast<std::tuple<Args...>>(any);
             return std::apply(a_method, message);
@@ -98,7 +98,7 @@ public:
             std::function<Return(Args ...)> a_method    ///< The function callback.
     )
     {
-        auto lambda = [=](std::any any) -> std::any
+        auto lambda = [a_method](std::any any) -> std::any
         {
             auto message = std::any_cast<std::tuple<Args...>>(any);
             return std::apply(a_method, message);

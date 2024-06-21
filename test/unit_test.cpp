@@ -67,66 +67,101 @@ TEST(notifly, add_observer)
             lambda);
 
     notifly::default_notifly().remove_observer(i1);
+    ASSERT_EQ(0, 0);
 }
 
 TEST(notifly, add_observer_temp)
 {
-    auto i1 = notifly::default_notifly().add_observer_temp(poster, sum_callback);
+    auto i1 = notifly::default_notifly().add_observer(poster, sum_callback);
 
-    auto ret = notifly::default_notifly().post_notification_temp<int, long>(poster, 5, 10);
+    auto ret = notifly::default_notifly().post_notification<int, long>(poster, 5, 10);
     if(!ret)
     {
         printf("Failed to post notification: %s\n", notifly::default_notifly().get_last_error().c_str());
     }
 
     notifly::default_notifly().remove_observer(i1);
+    ASSERT_EQ(ret, false);
 }
 
 TEST(notifly, add_observer_temp_struct)
 {
-    auto i1 = notifly::default_notifly().add_observer_temp(poster, print_struct);
+    auto i1 = notifly::default_notifly().add_observer(poster, print_struct);
 
     point a_point = {0, 0};
-    auto ret = notifly::default_notifly().post_notification_temp<point>(poster, a_point);
+    // We are passing a struct by value when we should pass it by reference as the observer is expecting a pointer
+    // so it will fail.
+    auto ret = notifly::default_notifly().post_notification<point>(poster, a_point);
     if(!ret)
     {
         printf("Failed to post notification: %s\n", notifly::default_notifly().get_last_error().c_str());
     }
 
     notifly::default_notifly().remove_observer(i1);
+    ASSERT_EQ(ret, false);
 }
 
 TEST(notifly, struct_add_observer_and_post_message)
 {
-    auto i1 = notifly::default_notifly().add_observer_temp(poster, print_struct);
+    auto i1 = notifly::default_notifly().add_observer(poster, print_struct);
 
     point p = {0, 0};
     p.x = 10;
     p.y = 20;
 
-    notifly::default_notifly().post_notification_temp<point*>(poster, &p, true);
+    auto ret = notifly::default_notifly().post_notification<point*>(poster, &p, true);
 
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
     notifly::default_notifly().remove_observer(i1);
+    ASSERT_EQ(ret, true);
 }
 
 TEST(notifly, lamda_and_post_message)
 {
-    auto lambda = [](int a, int b) -> int
+    auto lambda = std::function<int(int, int)>([](int a, int b) -> int
     {
+        printf("Sum is %d\n", a + b);
         return a + b;
-    };
+    });
 
-    //auto i1 = notifly::default_notifly().add_observer_temp(
-    //        poster,
-    //        lambda);
+    auto i1 = notifly::default_notifly().add_observer(poster, lambda);
 
-    //notifly::default_notifly().post_notification_temp<int, int>(poster, 5, 10);
+    auto ret = notifly::default_notifly().post_notification<int, int>(poster, 5, 10);
 
-    //notifly::default_notifly().remove_observer(i1);
-
+    notifly::default_notifly().remove_observer(i1);
+    ASSERT_EQ(ret, true);
 }
+
+TEST(notifly, any_to_any)
+{
+    auto lambda = std::function<std::any(std::any)>([](std::any any) -> std::any
+    {
+        if(any.has_value())
+        {
+            auto message = std::any_cast<int*>(any);
+            printf("Received notification %d!\n", (*message)++);
+            printf("Incremented message to %d\n", *message);
+            return 0;
+        }
+        else
+        {
+            printf("No payload!\n");
+            return 1;
+        }
+    });
+
+    auto i1 = notifly::default_notifly().add_observer(poster, lambda);
+
+    int message = 0;
+    auto ret = notifly::default_notifly().post_notification<std::any>(poster, &message);
+    printf("Message: %d\n", message);
+    ASSERT_EQ(message, 1);
+
+    notifly::default_notifly().remove_observer(i1);
+    ASSERT_EQ(ret, true);
+}
+
 
 int main(int argc, char **argv)
 {

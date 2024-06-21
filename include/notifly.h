@@ -51,7 +51,7 @@ public:
 	/**
      * Constructor.
      */
-     notifly();
+    notifly();
 
 	/**
      * This method adds a function callback as an observer to a named notification.
@@ -66,7 +66,7 @@ public:
     * This method adds a function callback as an observer to a named notification.
     */
     template<typename Return, typename ...Args>
-    uint64_t add_observer_temp
+    uint64_t add_observer
     (
             int a_notification,       		    ///< The name of the notification you wish to observe.
             Return(*a_method)(Args... args)     ///< The function callback.
@@ -92,7 +92,7 @@ public:
    * This method adds a function callback as an observer to a named notification.
    */
     template<typename Return, typename ...Args>
-    uint64_t add_observer_temp
+    uint64_t add_observer
     (
             int a_notification,       		            ///< The name of the notification you wish to observe.
             std::function<Return(Args ...)> a_method    ///< The function callback.
@@ -149,7 +149,7 @@ public:
 	 * If no such notification exists, this function will print a warning to the console and return false.
      */
     template<typename ...Args>
-    bool post_notification_temp
+    bool post_notification
     (
             int a_notification,		///< The name of the notification you wish to post.
             Args... args,           ///< The payload associated with the specified notification.

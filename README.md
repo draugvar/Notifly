@@ -42,8 +42,6 @@ Foo myFoo;
 notifly::default_notifly().add_observer(MY_NOTIFICATION_ID, std::bind(&Foo::func, myFoo));
 ```
 
-Currently, only `std::any(std::any)` function signatures are supported.
-
 ### Posting Notifications
 
 Posting notifications can be done with `notifly::post_notification`, like so:

@@ -29,4 +29,9 @@ jobs:
 
       - name: Test
         working-directory: build
-        run: ./unit_test
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            ./unit_test.exe
+          else
+            ./unit_test
+          fi

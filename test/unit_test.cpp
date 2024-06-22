@@ -247,7 +247,7 @@ TEST(notifly, remove_add_remove_observer)
         if(any.has_value())
         {
             auto message = std::any_cast<uint64_t*>(any);
-            printf("Received notification %llu!\n", *message);
+            std::cout << "Received notification " << *message << "!" << std::endl;
             return 0;
         }
         else

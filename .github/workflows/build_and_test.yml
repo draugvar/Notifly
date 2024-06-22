@@ -1,0 +1,38 @@
+name: Build and Test
+
+# This workflow is triggered when a pull request is created or updated on the main branch or if manually triggered
+on:
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@main
+
+      - name: Setup CMake
+        uses: jwlawson/actions-setup-cmake@master
+
+      - name: Configure CMake
+        run: cmake -B build
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Test
+        working-directory: build
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            ./Release/unit_test.exe
+          else
+            ./unit_test
+          fi

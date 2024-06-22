@@ -25,7 +25,7 @@
  * THE SOFTWARE.
  */
 
- // ReSharper disable CppExpressionWithoutSideEffects
+// ReSharper disable CppExpressionWithoutSideEffects
 #include "notifly.h"
 
 struct point
@@ -51,8 +51,15 @@ enum message
 {
 	poster,
 	second_poster,
-	third_poster
+	third_poster,
+    fourth_poster
 };
+
+int sum(int a, int b)
+{
+    printf("Sum is %d\n", a + b);
+    return a + b;
+}
 
 void run_notification()
 {
@@ -112,7 +119,7 @@ void run_notification()
 	auto value = 1;
 	printf("I'm sending an int that has value %d\n", value);
 	auto payload = std::make_any<int*>(&value);
-	notifly::default_notifly().post_notification(poster, payload);
+	notifly::default_notifly().post_notification<std::any>(poster, payload);
 	printf("After post value is %d\n", value);
 	printf("============\n");
 
@@ -126,7 +133,7 @@ void run_notification()
 
 	// Resizing thread pool
 	notifly::default_notifly().resize_thread_pool(10);
-	notifly::default_notifly().post_notification(third_poster, std::any(), true);
+	notifly::default_notifly().post_notification<std::any>(third_poster, std::any(), true);
 
 	notifly::default_notifly().remove_observer(i1);
 
@@ -182,6 +189,22 @@ void run_notification()
 	notifly::default_notifly().post_notification(second_poster);
 	printf("Point x.value = %d\n", a_point.x);
 	printf("Point y.value = %d\n", a_point.y);
+
+    notifly::default_notifly().add_observer(fourth_poster, sum);
+    auto ret = notifly::default_notifly().post_notification<int, std::string>(fourth_poster, 5, "ciao", false);
+    if(!ret)
+    {
+        printf("Error: %s\n", notifly::default_notifly().get_last_error().c_str());
+    }
+    notifly::default_notifly().post_notification<int, int>(fourth_poster, 5, 7, true);
+
+    ret = notifly::default_notifly().post_notification<int, long>(fourth_poster, 5, 7000, true);
+    if(!ret)
+    {
+        printf("Error: %s\n", notifly::default_notifly().get_last_error().c_str());
+    }
+
+    notifly::default_notifly().remove_all_observers(fourth_poster);
 }
 
 int main()

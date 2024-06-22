@@ -44,3 +44,17 @@ int print_struct(point* a_point)
     return 0;
 }
 
+int critical_section(std::condition_variable* a_cv, std::mutex* a_mutex, const bool* a_ready, bool* a_notify)
+{
+    if(a_cv == nullptr || a_mutex == nullptr || a_notify == nullptr)
+    {
+        return -1;
+    }
+
+    std::unique_lock<std::mutex> lock(*a_mutex);
+    a_cv->wait(lock, [a_ready] { return *a_ready; });
+    printf("Hello critical section\n");
+    *a_notify = true;
+    a_cv->notify_one();
+    return 0;
+}

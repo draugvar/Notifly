@@ -288,6 +288,43 @@ TEST(notifly, add_different_observers)
     ASSERT_EQ(ret2, false);
 }
 
+TEST(notifly, critical_section)
+{
+    std::mutex mutex;
+    std::condition_variable cv;
+    bool ready = false;
+    bool notify = false;
+
+    auto i1 = notifly::default_notifly().add_observer(poster, critical_section);
+
+    auto ret = notifly::default_notifly().post_notification<std::condition_variable*, std::mutex*, const bool*, bool*>
+            (
+                    poster,
+                    &cv,
+                    &mutex,
+                    &ready,
+                    &notify,
+                    true
+            );
+    ASSERT_EQ(ret, true);
+
+    // Notify the observer that it can proceed
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        ready = true;
+    }
+    cv.notify_one();
+
+    // Wait for the observer to finish
+    {
+        std::unique_lock<std::mutex> lock(mutex);
+        cv.wait(lock, [&notify] { return notify; });
+    }
+
+    notifly::default_notifly().remove_observer(i1);
+    ASSERT_EQ(notify, true);
+}
+
 int main(int argc, char **argv)
 {
     ::testing::InitGoogleTest(&argc, argv);

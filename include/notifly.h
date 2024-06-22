@@ -26,6 +26,7 @@
 #pragma once
 
 #include <unordered_map>
+#include <sstream>
 #include <functional>
 #include <list>
 #include <mutex>

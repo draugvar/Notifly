@@ -325,6 +325,23 @@ TEST(notifly, critical_section)
     ASSERT_EQ(notify, true);
 }
 
+TEST(notifly, different_notifly_instances)
+{
+    auto i1 = notifly::default_notifly().add_observer(poster, sum_callback);
+    notifly another_notifly;
+    auto i2 = another_notifly.add_observer(poster, sum_callback);
+    ASSERT_GT(i1, 0);
+    ASSERT_EQ(i2, 1);
+
+    auto ret = notifly::default_notifly().post_notification<int, int>(poster, (int) i1, (int) i2, true);
+    ASSERT_EQ(ret, true);
+    ret = another_notifly.post_notification<int, int>(poster, (int) i1, (int) i2);
+    ASSERT_EQ(ret, true);
+
+    notifly::default_notifly().remove_observer(i1);
+    another_notifly.remove_observer(i2);
+}
+
 int main(int argc, char **argv)
 {
     ::testing::InitGoogleTest(&argc, argv);

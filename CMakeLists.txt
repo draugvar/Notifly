@@ -42,7 +42,7 @@ set_target_properties(gtest_main PROPERTIES MSVC_RUNTIME_LIBRARY MultiThreaded$<
 
 # 'Unit_Tests_run' is the target name
 # 'UNIT_SOURCE' are source files with tests
-file(GLOB UNIT_SOURCE test/*.cpp src/*.cpp include/*.h)
+file(GLOB UNIT_SOURCE test/*.cpp test/*.h src/*.cpp include/*.h)
 
 set(UNIT_TEST unit_test)
 add_executable(${UNIT_TEST} ${UNIT_SOURCE})

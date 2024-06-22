@@ -54,7 +54,7 @@ is set to `false` by default.
 
 ### Avoiding Unnecessary Lookups
 
-Notifications can be posted and modified by using the unique indentifier returned when add observer is called:
+Notifications can be posted and modified by using the unique identifier returned when add observer is called:
 
 ```C++
 auto observerId = notifly::default_notifly().add_observer([Notification ID], [=]{printf("I'm being posted by an iterator!\n");});

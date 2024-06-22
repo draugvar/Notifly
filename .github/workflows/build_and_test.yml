@@ -19,7 +19,7 @@ jobs:
         uses: actions/checkout@main
 
       - name: Setup CMake
-        uses: jwlawson/actions-setup-cmake@vmain
+        uses: jwlawson/actions-setup-cmake@main
 
       - name: Configure CMake
         run: cmake -B build

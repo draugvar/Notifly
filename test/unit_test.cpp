@@ -49,7 +49,7 @@ TEST(notifly, add_observer_struct)
     auto i1 = notifly::default_notifly().add_observer(poster, print_struct);
 
     point a_point = {0, 0};
-    // We are passing a struct by value when we should pass it by reference as the observer is expecting a pointer
+    // We are passing a struct by value when we should pass it by reference as the observer is expecting a pointer,
     // so it will fail.
     auto ret = notifly::default_notifly().post_notification<point>(poster, a_point);
     if(!ret)

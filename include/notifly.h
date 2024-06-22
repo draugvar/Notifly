@@ -412,8 +412,9 @@ private:
         else
         {
             // If the notification is not found in the 'm_observers_' map, it sets an error message and returns false.
-            std::string a_error = "Notification \"" + std::to_string(a_notification) + "\" does not exist.";
-            set_last_error(a_error);
+            std::stringstream a_error;
+            a_error << "Notification " << a_notification << " does not exist.";
+            set_last_error(a_error.str());
             return false;
         }
     }

@@ -67,17 +67,29 @@ public:
 	/**
      * @brief   Constructor.
      */
-    notifly() : m_ids_(0), m_thread_pool_(1) // Default thread-pool initialization to just 1 thread
+    notifly() : m_ids_(1), m_thread_pool_(1) // Default thread-pool initialization to just 1 thread
     {}
 
     /**
      * @brief                   This method adds a function callback as an observer to a named notification.
      * @param a_notification    The name of the notification you wish to observe.
      * @param a_method          The function callback. Accepts unsigned any(any) methods or lambdas.
-     * @return                  The observer id.
+     * @return                  The observer id. 0 if the payload types do not match the registered types.
     */
     uint64_t add_observer(int a_notification, const std::function<std::any(std::any any)>& a_method)
     {
+        // std::type_index is used to get a std::type_info for std::any, and .name() gets the name of the type.
+        auto type = std::type_index(typeid(std::any)).name();
+        if(!internal_check_observer_type(a_notification, type))
+        {
+            set_last_error("The payload types do not match the registered types");
+            return 0;
+        }
+
+        // The type of the payload (in this case std::any) is stored as a string in the 'm_payloads_types_' map.
+        // The key for the map is 'a_notification', which is the identifier for the notification.
+        m_payloads_types_[a_notification] = type;
+
         // A lambda function is being defined here. This lambda takes a single argument of type std::any and also
         // returns std::any.
         // The lambda captures 'a_method', which is a function passed from the surrounding scope.
@@ -92,11 +104,6 @@ public:
             return std::apply(a_method, message);
         };
 
-        // The type of the payload (in this case std::any) is stored as a string in the 'm_payloads_types_' map.
-        // The key for the map is 'a_notification', which is the identifier for the notification.
-        // std::type_index is used to get a std::type_info for std::any, and .name() gets the name of the type.
-        m_payloads_types_[a_notification] = std::type_index(typeid(std::any)).name();
-
         // The lambda is added as an observer for the notification 'a_notification' using the 'internal_add_observer' method.
         // The id of the observer is returned from the method.
         return internal_add_observer(a_notification, lambda);
@@ -106,11 +113,25 @@ public:
      * @brief                   This method adds a function callback as an observer to a named notification.
      * @param a_notification    The name of the notification you wish to observe.
      * @param a_method          The function callback.
-     * @return                  The observer id.
+     * @return                  The observer id. 0 if the payload types do not match the registered types.
     */
     template<typename Return, typename ...Args>
     uint64_t add_observer(int a_notification, Return(*a_method)(Args... args))
     {
+        // Generate a unique string for the types of Args
+        std::string types;
+        (..., (types += std::type_index(typeid(Args)).name()));
+
+        // Check if the types string matches the one saved in the map
+        if (!internal_check_observer_type(a_notification, types))
+        {
+            set_last_error("The payload types do not match the registered types");
+            return 0;
+        }
+
+        // Save the types string in the map
+        m_payloads_types_[a_notification] = types;
+
         // A lambda function is being defined here. This lambda takes a single argument of type std::any and also
         // returns std::any.
         // The lambda captures 'a_method', which is a function passed from the surrounding scope.
@@ -124,13 +145,6 @@ public:
             // The result of 'a_method' is returned from the lambda.
             return std::apply(a_method, message);
         };
-
-        // Generate a unique string for the types of Args
-        std::string types;
-        (..., (types += std::type_index(typeid(Args)).name()));
-
-        // Save the types string in the map
-        m_payloads_types_[a_notification] = types;
 
         // The lambda is added as an observer for the notification 'a_notification' using the 'internal_add_observer' method.
         // The id of the observer is returned from the method.
@@ -146,6 +160,20 @@ public:
     template<typename Return, typename ...Args>
     uint64_t add_observer(int a_notification, std::function<Return(Args ...)> a_method)
     {
+        // Generate a unique string for the types of Args
+        std::string types;
+        (..., (types += std::type_index(typeid(Args)).name()));
+
+        // Check if the types string matches the one saved in the map
+        if (!internal_check_observer_type(a_notification, types))
+        {
+            set_last_error("The payload types do not match the registered types");
+            return 0;
+        }
+
+        // Save the types string in the map
+        m_payloads_types_[a_notification] = types;
+
         // A lambda function is being defined here. This lambda takes a single argument of type std::any and
         // also returns std::any.
         // The lambda captures 'a_method', which is a function passed from the surrounding scope.
@@ -159,13 +187,6 @@ public:
             // The result of 'a_method' is returned from the lambda.
             return std::apply(a_method, message);
         };
-
-        // Generate a unique string for the types of Args
-        std::string types;
-        (..., (types += std::type_index(typeid(Args)).name()));
-
-        // Save the types string in the map
-        m_payloads_types_[a_notification] = types;
 
         // The lambda is added as an observer for the notification 'a_notification' using the 'internal_add_observer' method.
         // The id of the observer is returned from the method.
@@ -395,6 +416,22 @@ private:
             set_last_error(a_error);
             return false;
         }
+    }
+
+    /**
+     * @brief                   This method checks if the observer type matches the payload type.
+     * @param   a_notification  The notification to check.
+     * @param   a_type          The type to check.
+     * @return                  True if the observer type matches the payload type, false otherwise.
+     */
+    bool internal_check_observer_type(int a_notification, const std::string& a_type)
+    {
+        if(m_payloads_types_.contains(a_notification))
+        {
+            return m_payloads_types_[a_notification] == a_type;
+        }
+
+        return true;
     }
 
     /**

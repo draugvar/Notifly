@@ -246,9 +246,8 @@ TEST(notifly, remove_add_remove_observer)
     {
         if(any.has_value())
         {
-            auto message = std::any_cast<int*>(any);
-            printf("Received notification %d!\n", (*message)++);
-            printf("Incremented message to %d\n", *message);
+            auto message = std::any_cast<uint64_t*>(any);
+            printf("Received notification %llu!\n", *message);
             return 0;
         }
         else
@@ -267,6 +266,26 @@ TEST(notifly, remove_add_remove_observer)
     auto ret = notifly::default_notifly().post_notification<std::any>(poster, &i1);
     notifly::default_notifly().remove_observer(i1);
     ASSERT_EQ(ret, true);
+}
+
+TEST(notifly, add_different_observers)
+{
+    auto i1 = notifly::default_notifly().add_observer(poster, sum_callback);
+    auto i2 = notifly::default_notifly().add_observer(poster, print_struct);
+    ASSERT_EQ(i2, 0);
+    if(i2 == 0)
+    {
+        printf("Failed to add observer: %s\n", notifly::default_notifly().get_last_error().c_str());
+    }
+
+    auto ret = notifly::default_notifly().post_notification<int, int>(poster, (int)i1, (int)i2);
+    auto ret2 = notifly::default_notifly().post_notification<std::any>(poster, &i2);
+
+    notifly::default_notifly().remove_observer(i1);
+    notifly::default_notifly().remove_observer(i2);
+
+    ASSERT_EQ(ret, true);
+    ASSERT_EQ(ret2, false);
 }
 
 int main(int argc, char **argv)

@@ -363,6 +363,29 @@ TEST(notifly, multi_threads)
     notifly::default_notifly().remove_observer(ret);
 }
 
+TEST(notifly, check_ids)
+{
+    auto id_1 = notifly::default_notifly().add_observer(poster, sum_callback);
+    ASSERT_EQ(id_1, 1);
+    auto id_2 = notifly::default_notifly().add_observer(poster, sum_callback);
+    ASSERT_EQ(id_2, 2);
+    notifly::default_notifly().remove_observer(id_1);
+
+    id_1 = notifly::default_notifly().add_observer(poster, sum_callback);
+    ASSERT_EQ(id_1, 1);
+
+    notifly::default_notifly().remove_observer(id_2);
+    notifly::default_notifly().remove_observer(id_1);
+}
+
+TEST(notifly, remove_id_0)
+{
+    notifly::default_notifly().remove_observer(0);
+    auto id_1 = notifly::default_notifly().add_observer(poster, print_struct);
+    ASSERT_EQ(id_1, 1);
+    notifly::default_notifly().remove_observer(id_1);
+}
+
 int main(int argc, char **argv)
 {
     ::testing::InitGoogleTest(&argc, argv);

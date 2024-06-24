@@ -34,6 +34,7 @@
 #include <typeindex>
 #include <utility>
 #include <thread>
+#include <stack>
 
 #include "threadpool.h"
 
@@ -68,8 +69,14 @@ public:
 	/**
      * @brief   Constructor.
      */
-    notifly() : m_ids_(1), m_thread_pool_(1) // Default thread-pool initialization to just 1 thread
-    {}
+    notifly() : m_thread_pool_(1) // Default thread-pool initialization to just 1 thread
+    {
+        // Initialize the free ids stack with max ull value
+        for(auto i = 10000; i >= 1; --i)
+        {
+            m_free_ids.push(i);
+        }
+    }
 
     /**
      * @brief                   This method adds a function callback as an observer to a named notification.
@@ -226,10 +233,13 @@ public:
                     m_payloads_types_.erase(std::get<0>(tuple));
                 }
             }
+            // Push the observer id to the queue of free ids.
+            m_free_ids.push(a_observer);
         }
 
         // Finally, erase the observer from the map of observers by id.
         m_observers_by_id_.erase(a_observer);
+
     }
 
     /**
@@ -241,6 +251,16 @@ public:
     {
         // Lock the mutex to ensure thread safety during the operation.
         std::lock_guard a_lock(m_mutex_);
+
+        // Iterate over all observers for the given notification.
+        for(const auto& observer: m_observers_.at(a_notification))
+        {
+            // Push the observer id to the queue of free ids.
+            m_free_ids.push(observer.m_id_);
+            // Erase the observer from the map of observers by id.
+            m_observers_by_id_.erase(observer.m_id_);
+        }
+
         // Erase the notification from the map of observers and the map of payload types.
         m_observers_.erase(a_notification);
         m_payloads_types_.erase(a_notification);
@@ -342,8 +362,19 @@ private:
         // This ensures that the following operations are thread-safe.
         std::lock_guard a_lock(m_mutex_);
 
+        uint64_t id;
+        if (!m_free_ids.empty())
+        {
+            id = m_free_ids.top();
+            m_free_ids.pop();
+        }
+        else
+        {
+           return 0;
+        }
+
         // A 'notification_observer' object is created with a unique id, which is incremented after the creation.
-        notification_observer a_notification_observer(m_ids_++);
+        notification_observer a_notification_observer(id);
 
         // The callback function 'a_method' is moved into the 'm_callback_' member of the 'notification_observer' object.
         // This is more efficient than copying, especially for large objects.
@@ -357,9 +388,6 @@ private:
         // The '--' operator is used to get the iterator to the last element, as 'end()' returns an iterator to
         // one past the last element.
         auto tuple = std::make_tuple(a_notification, --m_observers_[a_notification].end());
-
-        // The id of the observer is retrieved from the tuple.
-        auto id = std::get<1>(tuple)->m_id_;
 
         // The tuple is added to the map 'm_observers_by_id_' with the observer id as the key.
         m_observers_by_id_[id] = tuple;
@@ -449,8 +477,8 @@ private:
     /** === Private members === **/
     // 'm_default_center_' is a static member variable that holds the default notification center.
 	static std::shared_ptr<notifly> m_default_center_;
-    // 'm_ids_' is a member variable that holds the unique identifier for observers.
-    std::atomic_uint_fast64_t m_ids_;
+    // 'm_free_ids' is a member variable that holds a queue of free observer ids.
+    std::stack<uint64_t> m_free_ids;
     // 'm_observers_' is a member variable that holds a map of notifications and their observers.
     std::unordered_map<int, std::list<notification_observer> > m_observers_;
     // 'm_observers_by_id_' is a member variable that holds a map of observer ids and their associated tuples.

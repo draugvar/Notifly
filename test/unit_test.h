@@ -58,3 +58,20 @@ int critical_section(std::condition_variable* a_cv, std::mutex* a_mutex, const b
     a_cv->notify_one();
     return 0;
 }
+
+int just_increment_and_print(std::atomic_int* a_value)
+{
+    if(a_value == nullptr)
+    {
+        return -1;
+    }
+
+    // increment 10 times
+    for(int i = 0; i < 10; i++)
+    {
+        auto n = a_value->fetch_add(1);
+        printf("Value is %d\n", n);
+    }
+
+    return 0;
+}

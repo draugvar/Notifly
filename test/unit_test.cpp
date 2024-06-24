@@ -342,6 +342,27 @@ TEST(notifly, different_notifly_instances)
     another_notifly.remove_observer(i2);
 }
 
+TEST(notifly, multi_threads)
+{
+    notifly::default_notifly().resize_thread_pool(100);
+
+    auto ret = notifly::default_notifly().add_observer(poster, just_increment_and_print);
+    ASSERT_GE(ret, 0);
+
+    // 100 threads will increment the value 10 times
+    std::atomic_int a_value = 0;
+    for(int i = 0; i < 100; i++)
+    {
+        notifly::default_notifly().post_notification<std::atomic_int*>(poster, &a_value, true);
+    }
+    while(a_value < 1000)
+    {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    notifly::default_notifly().remove_observer(ret);
+}
+
 int main(int argc, char **argv)
 {
     ::testing::InitGoogleTest(&argc, argv);

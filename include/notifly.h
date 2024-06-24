@@ -370,7 +370,8 @@ private:
         }
         else
         {
-           return 0;
+            set_last_error("No more observer ids");
+            return 0;
         }
 
         // A 'notification_observer' object is created with a unique id, which is incremented after the creation.

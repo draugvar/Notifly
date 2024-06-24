@@ -77,7 +77,7 @@ TEST(notifly, struct_add_observer_and_post_message)
     ASSERT_EQ(ret, true);
 }
 
-TEST(notifly, lamda_and_post_message)
+TEST(notifly, lambda_and_post_message)
 {
     auto lambda = std::function<int(int, int)>([](int a, int b) -> int
     {
@@ -240,7 +240,7 @@ TEST(notifly, remove_unexisting_observer)
     ASSERT_EQ(ret, false);
 }
 
-TEST(notifly, remove_add_remove_observer)
+TEST(notifly, add_remove_add_observer)
 {
     auto lambda = std::function<std::any(std::any)>([](std::any any) -> std::any
     {

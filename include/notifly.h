@@ -38,6 +38,15 @@
 
 #include "threadpool.h"
 
+enum class errors
+{
+    no_error =                   0,
+    observer_not_found =        -1,
+    notification_not_found =    -2,
+    payload_type_not_match =    -3,
+    no_more_observer_ids =      -4
+};
+
 /**
  * @brief   This struct is an observer that is used to observe notifications.
  */
@@ -74,10 +83,10 @@ public:
 	/**
      * @brief   Constructor.
      */
-    notifly() : m_thread_pool_(1) // Default thread-pool initialization to just 1 thread
+    notifly() : m_thread_pool_(5) // Default thread-pool initialization to just 1 thread
     {
         // Initialize the free ids stack with max ull value
-        for(auto i = 10000; i >= 1; --i)
+        for(auto i = 2000; i >= 1; --i)
         {
             m_free_ids.push(i);
         }
@@ -87,7 +96,7 @@ public:
      * @brief                   This method adds a function callback as an observer to a named notification.
      * @param a_notification    The name of the notification you wish to observe.
      * @param a_method          The function callback.
-     * @return                  The observer id. 0 if the payload types do not match the registered types.
+     * @return                  The observer id > 0 if successful or an error code
     */
     template<typename Return, typename ...Args>
     int add_observer(int a_notification, Return(*a_method)(Args... args))
@@ -96,10 +105,10 @@ public:
     }
 
     /**
-     * @brief   This method adds a function callback as an observer to a named notification.
+     * @brief                   This method adds a function callback as an observer to a named notification.
      * @param   a_notification  The name of the notification you wish to observe.
      * @param   a_method        The function callback.
-     * @return  The observer id.
+     * @return                  The observer id > 0 if successful or an error code
      */
     template<typename Return, typename ...Args>
     int add_observer(int a_notification, std::function<Return(Args ...)> a_method)
@@ -111,8 +120,7 @@ public:
         // Check if the types string matches the one saved in the map
         if (!internal_check_observer_type(a_notification, types))
         {
-            set_last_error("The payload types do not match the registered types");
-            return 0;
+            return static_cast<int>(errors::payload_type_not_match);
         }
 
         // Save the types string in the map
@@ -130,8 +138,7 @@ public:
         }
         else
         {
-            set_last_error("No more observer ids");
-            return 0;
+            return static_cast<int>(errors::no_more_observer_ids);
         }
 
         // A 'notification_observer' object is created with a unique id, which is incremented after the creation.
@@ -209,7 +216,6 @@ public:
 
         // Finally, erase the observer from the map of observers by id.
         m_observers_by_id_.erase(a_observer);
-
     }
 
     /**
@@ -246,10 +252,10 @@ public:
      * @param args              The payload associated with the specified notification.
      * @param a_async           If false, this function will run in the same thread as the caller.
      *                          If true, this function will run in a separate thread.
-     * @return                  True if the notification was successfully posted, false otherwise.
+     * @return                  Number of observers that were successfully notified or an error code.
      */
     template<typename ...Args>
-    bool post_notification(int a_notification, Args... args, bool a_async = false)
+    int post_notification(int a_notification, Args... args, bool a_async = false)
     {
         // Generate a unique string for the types of Args
         std::string types;
@@ -261,17 +267,11 @@ public:
         // Check if the types string matches the one saved in the map
         if(!m_payloads_types_.contains(a_notification))
         {
-            // If the notification does not exist in the 'm_payloads_types_' map, an error message is set and the
-            // function returns false.
-            set_last_error("The notification does not exist");
-            return false;
+            return static_cast<int>(errors::notification_not_found);
         }
         else if (m_payloads_types_[a_notification] != types)
         {
-            // If the types string does not match the one saved in the 'm_payloads_types_' map for the given notification,
-            // an error message is set and the function returns false.
-            set_last_error("The payload types do not match the registered types");
-            return false;
+            return static_cast<int>(errors::payload_type_not_match);
         }
 
         // A std::tuple of the arguments is created and wrapped in a std::any.
@@ -282,47 +282,28 @@ public:
         std::lock_guard a_lock(m_mutex_);
 
         // The code attempts to find the notification 'a_notification' in the 'm_observers_' map.
-        if (const auto a_notification_iterator = m_observers_.find(a_notification);
-                a_notification_iterator != m_observers_.end())
-        {
-            // If the notification is found, it retrieves the list of observers for that notification.
-            const auto& a_notification_list = a_notification_iterator->second;
+        const auto a_notification_iterator = m_observers_.find(a_notification);
 
-            // It then iterates over each observer in the list.
-            for (const auto& callback : a_notification_list)
+        // If the notification is found, it retrieves the list of observers for that notification.
+        const auto& a_notification_list = a_notification_iterator->second;
+
+        // It then iterates over each observer in the list.
+        for (const auto& callback : a_notification_list)
+        {
+            // If 'a_async' is true, it pushes the callback function to the thread pool for asynchronous execution.
+            // The callback function is invoked with 'a_payload' as its argument.
+            if(a_async)
             {
-                // If 'a_async' is true, it pushes the callback function to the thread pool for asynchronous execution.
-                // The callback function is invoked with 'a_payload' as its argument.
-                if(a_async)
-                {
-                    m_thread_pool_.push([=](int id) { return callback.m_callback(payload);});
-                }
-                    // If 'a_async' is false, it directly invokes the callback function with 'a_payload' as its argument.
-                else
-                {
-                    callback.m_callback(payload);
-                }
+                m_thread_pool_.push([=](int id) { return callback.m_callback(payload);});
             }
-            // If the notification is found and the callbacks are successfully invoked, it returns true.
-            return true;
+            // If 'a_async' is false, it directly invokes the callback function with 'a_payload' as its argument.
+            else
+            {
+                callback.m_callback(payload);
+            }
         }
-        else
-        {
-            // If the notification is not found in the 'm_observers_' map, it sets an error message and returns false.
-            std::stringstream a_error;
-            a_error << "Notification " << a_notification << " does not exist.";
-            set_last_error(a_error.str());
-            return false;
-        }
-    }
-
-    /**
-     * @brief   This method gets the last error message.
-     */
-    std::string get_last_error()
-    {
-        std::lock_guard a_lock(m_last_error_mutex_);
-        return m_last_error_;
+        // If the notification is found and the callbacks are successfully invoked, it returns true.
+        return static_cast<int>(a_notification_list.size());
     }
 
 	/**
@@ -368,16 +349,6 @@ private:
         return true;
     }
 
-    /**
-     * @brief   This method sets the last error message.
-     * @param   a_error The error message you wish to set.
-     */
-    void set_last_error(const std::string& a_error)
-    {
-        std::lock_guard a_lock(m_last_error_mutex_);
-        m_last_error_ = a_error;
-    }
-
     /** === Private members === **/
     // 'm_default_center_' is a static member variable that holds the default notification center.
 	static std::shared_ptr<notifly> m_default_center_;
@@ -396,9 +367,4 @@ private:
 
     // 'm_thread_pool_' is a member variable that holds a thread pool for asynchronous notifications.
 	tp::thread_pool m_thread_pool_;
-
-    // 'm_last_error_mutex_' is a member variable that holds a mutex for thread safety.
-    std::mutex m_last_error_mutex_;
-    // 'm_last_error_' is a member variable that holds the last error message.
-    std::string m_last_error_;
 };

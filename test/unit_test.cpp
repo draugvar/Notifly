@@ -12,13 +12,9 @@ TEST(notifly, func_add_observer)
     auto i1 = notifly::default_notifly().add_observer(poster, sum_callback);
 
     auto ret = notifly::default_notifly().post_notification<int, long>(poster, 5, 10);
-    if(!ret)
-    {
-        printf("Failed to post notification: %s\n", notifly::default_notifly().get_last_error().c_str());
-    }
 
     notifly::default_notifly().remove_observer(i1);
-    ASSERT_EQ(ret, false);
+    ASSERT_EQ(ret, (int)errors::payload_type_not_match);
 }
 
 TEST(notifly, add_observer_struct)
@@ -29,13 +25,8 @@ TEST(notifly, add_observer_struct)
     // We are passing a struct by value when we should pass it by reference as the observer is expecting a pointer,
     // so it will fail.
     auto ret = notifly::default_notifly().post_notification<point>(poster, a_point);
-    if(!ret)
-    {
-        printf("Failed to post notification: %s\n", notifly::default_notifly().get_last_error().c_str());
-    }
-
     notifly::default_notifly().remove_observer(i1);
-    ASSERT_EQ(ret, false);
+    ASSERT_EQ(ret, (int)errors::payload_type_not_match);
 }
 
 TEST(notifly, struct_add_observer_and_post_message)
@@ -51,7 +42,7 @@ TEST(notifly, struct_add_observer_and_post_message)
     std::this_thread::sleep_for(std::chrono::milliseconds(250));
 
     notifly::default_notifly().remove_observer(i1);
-    ASSERT_EQ(ret, true);
+    ASSERT_GE(ret, 0);
 }
 
 TEST(notifly, lambda_and_post_message)
@@ -67,7 +58,7 @@ TEST(notifly, lambda_and_post_message)
     auto ret = notifly::default_notifly().post_notification<int, int>(poster, 5, 10);
 
     notifly::default_notifly().remove_observer(i1);
-    ASSERT_EQ(ret, true);
+    ASSERT_GE(ret, 0);
 }
 
 TEST(notifly, nothing_to_lambda)
@@ -81,39 +72,31 @@ TEST(notifly, nothing_to_lambda)
     auto i1 = notifly::default_notifly().add_observer(poster, lambda);
 
     auto ret = notifly::default_notifly().post_notification(poster);
-    ASSERT_EQ(ret, true);
-
     notifly::default_notifly().remove_observer(i1);
+
+    ASSERT_GE(ret, 0);
 }
 
 TEST(notifly, int_to_nothing)
 {
     auto ret = notifly::default_notifly().post_notification<int>(poster, 5);
-    if(!ret)
-    {
-        printf("Failed to post notification: %s\n", notifly::default_notifly().get_last_error().c_str());
-    }
-    ASSERT_EQ(ret, false);
+    ASSERT_EQ(ret, (int) errors::notification_not_found);
 }
 
 TEST(notifly, add_different_observers)
 {
     auto i1 = notifly::default_notifly().add_observer(poster, sum_callback);
     auto i2 = notifly::default_notifly().add_observer(poster, print_struct);
-    ASSERT_EQ(i2, 0);
-    if(i2 == 0)
-    {
-        printf("Failed to add observer: %s\n", notifly::default_notifly().get_last_error().c_str());
-    }
 
-    auto ret = notifly::default_notifly().post_notification<int, int>(poster, (int)i1, (int)i2);
+    auto ret1 = notifly::default_notifly().post_notification<int, int>(poster, (int)i1, (int)i2);
     auto ret2 = notifly::default_notifly().post_notification<int*>(poster, &i2);
 
     notifly::default_notifly().remove_observer(i1);
     notifly::default_notifly().remove_observer(i2);
 
-    ASSERT_EQ(ret, true);
-    ASSERT_EQ(ret2, false);
+    ASSERT_EQ(i2, (int) errors::payload_type_not_match);
+    ASSERT_GE(ret1, 0);
+    ASSERT_EQ(ret2, (int) errors::payload_type_not_match);
 }
 
 TEST(notifly, critical_section)
@@ -134,7 +117,6 @@ TEST(notifly, critical_section)
                     &notify,
                     true
             );
-    ASSERT_EQ(ret, true);
 
     // Notify the observer that it can proceed
     {
@@ -150,24 +132,27 @@ TEST(notifly, critical_section)
     }
 
     notifly::default_notifly().remove_observer(i1);
+    ASSERT_GE(ret, 0);
     ASSERT_EQ(notify, true);
 }
 
 TEST(notifly, different_notifly_instances)
 {
     auto i1 = notifly::default_notifly().add_observer(poster, sum_callback);
+
     notifly another_notifly;
     auto i2 = another_notifly.add_observer(poster, sum_callback);
-    ASSERT_GT(i1, 0);
-    ASSERT_EQ(i2, 1);
 
-    auto ret = notifly::default_notifly().post_notification<int, int>(poster, (int) i1, (int) i2, true);
-    ASSERT_EQ(ret, true);
-    ret = another_notifly.post_notification<int, int>(poster, (int) i1, (int) i2);
-    ASSERT_EQ(ret, true);
+    auto ret1 = notifly::default_notifly().post_notification<int, int>(poster, (int) i1, (int) i2, true);
+    auto ret2 = another_notifly.post_notification<int, int>(poster, (int) i1, (int) i2);
 
     notifly::default_notifly().remove_observer(i1);
     another_notifly.remove_observer(i2);
+
+    ASSERT_GE(i1, 0);
+    ASSERT_EQ(i2, 1);
+    ASSERT_GE(ret1, 0);
+    ASSERT_GE(ret2, 0);
 }
 
 TEST(notifly, multi_threads)
@@ -175,7 +160,6 @@ TEST(notifly, multi_threads)
     notifly::default_notifly().resize_thread_pool(100);
 
     auto ret = notifly::default_notifly().add_observer(poster, just_increment_and_print);
-    ASSERT_GE(ret, 0);
 
     // 100 threads will increment the value 10 times
     std::atomic_int a_value = 0;
@@ -189,29 +173,33 @@ TEST(notifly, multi_threads)
     }
 
     notifly::default_notifly().remove_observer(ret);
+    ASSERT_GE(ret, 0);
 }
 
 TEST(notifly, check_ids)
 {
     auto id_1 = notifly::default_notifly().add_observer(poster, sum_callback);
-    ASSERT_EQ(id_1, 1);
     auto id_2 = notifly::default_notifly().add_observer(poster, sum_callback);
-    ASSERT_EQ(id_2, 2);
+
     notifly::default_notifly().remove_observer(id_1);
 
     id_1 = notifly::default_notifly().add_observer(poster, sum_callback);
-    ASSERT_EQ(id_1, 1);
 
     notifly::default_notifly().remove_observer(id_2);
     notifly::default_notifly().remove_observer(id_1);
+
+    ASSERT_EQ(id_1, 1);
+    ASSERT_EQ(id_2, 2);
+    ASSERT_EQ(id_1, 1);
 }
 
 TEST(notifly, remove_id_0)
 {
     notifly::default_notifly().remove_observer(0);
     auto id_1 = notifly::default_notifly().add_observer(poster, print_struct);
-    ASSERT_EQ(id_1, 1);
+
     notifly::default_notifly().remove_observer(id_1);
+    ASSERT_EQ(id_1, 1);
 }
 
 int main(int argc, char **argv)

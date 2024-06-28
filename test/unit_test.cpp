@@ -246,7 +246,7 @@ TEST(notifly, add_remove_add_observer)
     {
         if(any.has_value())
         {
-            auto message = std::any_cast<uint64_t*>(any);
+            auto message = std::any_cast<int*>(any);
             std::cout << "Received notification " << *message << "!" << std::endl;
             return 0;
         }

@@ -41,23 +41,28 @@
 /**
  * @brief   This struct is an observer that is used to observe notifications.
  */
-struct notification_observer
+class notification_observer
 {
+public:
     /**
      * @brief   Constructor. This constructor initializes the observer with a unique identifier.
      */
-    explicit notification_observer(uint_fast64_t a_id)
-    {
-        // The passed identifier is assigned to the member variable 'm_id_'.
-        m_id_ = a_id;
-    }
+    explicit notification_observer(int a_id, int a_notification) :
+        m_id(a_id),
+        is_active(false),
+        m_notification(a_notification)
+    {}
 
     // 'm_id_' is a member variable that holds the unique identifier for the observer.
-    uint_fast64_t m_id_;
+    int m_id;
 
     // 'm_callback_' is a member variable that holds the callback function to be invoked when a notification is posted.
     // The callback function takes a std::any parameter and returns a std::any value.
-    std::function<std::any(std::any)> m_callback_;
+    std::function<std::any(std::any)> m_callback;
+
+    bool is_active;
+
+    int m_notification;
 };
 
 /**
@@ -84,7 +89,7 @@ public:
      * @param a_method          The function callback. Accepts unsigned any(any) methods or lambdas.
      * @return                  The observer id. 0 if the payload types do not match the registered types.
     */
-    uint64_t add_observer(int a_notification, const std::function<std::any(std::any any)>& a_method)
+    int add_observer(int a_notification, const std::function<std::any(std::any any)>& a_method)
     {
         // std::type_index is used to get a std::type_info for std::any, and .name() gets the name of the type.
         auto type = std::type_index(typeid(std::any)).name();
@@ -124,7 +129,7 @@ public:
      * @return                  The observer id. 0 if the payload types do not match the registered types.
     */
     template<typename Return, typename ...Args>
-    uint64_t add_observer(int a_notification, Return(*a_method)(Args... args))
+    int add_observer(int a_notification, Return(*a_method)(Args... args))
     {
         // Generate a unique string for the types of Args
         std::string types;
@@ -206,7 +211,7 @@ public:
 	 * @param a_observer    The observer you wish to remove.
 	 * @return              Void.
 	 */
-	void remove_observer(uint64_t a_observer)
+	void remove_observer(int a_observer)
     {
         // Check if the observer is not in the map of observers by id. If it's not, exit the function.
         if(!m_observers_by_id_.contains(a_observer)) return;
@@ -256,9 +261,9 @@ public:
         for(const auto& observer: m_observers_.at(a_notification))
         {
             // Push the observer id to the queue of free ids.
-            m_free_ids.push(observer.m_id_);
+            m_free_ids.push(observer.m_id);
             // Erase the observer from the map of observers by id.
-            m_observers_by_id_.erase(observer.m_id_);
+            m_observers_by_id_.erase(observer.m_id);
         }
 
         // Erase the notification from the map of observers and the map of payload types.
@@ -356,13 +361,13 @@ private:
      * @param a_method          The function callback. Accepts unsigned any(any) methods or lambdas.
      * @return                  The observer id.
     */
-    uint64_t internal_add_observer(int a_notification, std::function<std::any(std::any)> a_method)
+    int internal_add_observer(int a_notification, std::function<std::any(std::any)> a_method)
     {
         // A lock_guard object is created, locking the mutex 'm_mutex_' for the duration of the scope.
         // This ensures that the following operations are thread-safe.
         std::lock_guard a_lock(m_mutex_);
 
-        uint64_t id;
+        int id;
         if (!m_free_ids.empty())
         {
             id = m_free_ids.top();
@@ -375,11 +380,11 @@ private:
         }
 
         // A 'notification_observer' object is created with a unique id, which is incremented after the creation.
-        notification_observer a_notification_observer(id);
+        notification_observer a_notification_observer(id, a_notification);
 
         // The callback function 'a_method' is moved into the 'm_callback_' member of the 'notification_observer' object.
         // This is more efficient than copying, especially for large objects.
-        a_notification_observer.m_callback_ = std::move(a_method);
+        a_notification_observer.m_callback = std::move(a_method);
 
         // The 'notification_observer' object is added to the list of observers for the notification 'a_notification'.
         m_observers_[a_notification].push_back(a_notification_observer);
@@ -428,12 +433,12 @@ private:
                 // The callback function is invoked with 'a_payload' as its argument.
                 if(a_async)
                 {
-                    m_thread_pool_.push([=](int id) { return callback.m_callback_(a_payload);});
+                    m_thread_pool_.push([=](int id) { return callback.m_callback(a_payload);});
                 }
                 // If 'a_async' is false, it directly invokes the callback function with 'a_payload' as its argument.
                 else
                 {
-                    callback.m_callback_(a_payload);
+                    callback.m_callback(a_payload);
                 }
             }
             // If the notification is found and the callbacks are successfully invoked, it returns true.
@@ -479,11 +484,11 @@ private:
     // 'm_default_center_' is a static member variable that holds the default notification center.
 	static std::shared_ptr<notifly> m_default_center_;
     // 'm_free_ids' is a member variable that holds a queue of free observer ids.
-    std::stack<uint64_t> m_free_ids;
+    std::stack<int> m_free_ids;
     // 'm_observers_' is a member variable that holds a map of notifications and their observers.
     std::unordered_map<int, std::list<notification_observer> > m_observers_;
     // 'm_observers_by_id_' is a member variable that holds a map of observer ids and their associated tuples.
-    std::unordered_map<uint64_t, notification_tuple_t> m_observers_by_id_;
+    std::unordered_map<int, notification_tuple_t> m_observers_by_id_;
     // 'm_payloads_types_' is a member variable that holds the types of payloads for each notification.
     std::unordered_map<int, std::string> m_payloads_types_;
 

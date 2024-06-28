@@ -86,79 +86,6 @@ public:
     /**
      * @brief                   This method adds a function callback as an observer to a named notification.
      * @param a_notification    The name of the notification you wish to observe.
-     * @param a_method          The function callback. Accepts unsigned any(any) methods or lambdas.
-     * @return                  The observer id. 0 if the payload types do not match the registered types.
-    */
-    int add_observer(int a_notification, const std::function<std::any(std::any any)>& a_method)
-    {
-        // std::type_index is used to get a std::type_info for std::any, and .name() gets the name of the type.
-        auto type = std::type_index(typeid(std::any)).name();
-        if(!internal_check_observer_type(a_notification, type))
-        {
-            set_last_error("The payload types do not match the registered types");
-            return 0;
-        }
-
-        // The type of the payload (in this case std::any) is stored as a string in the 'm_payloads_types_' map.
-        // The key for the map is 'a_notification', which is the identifier for the notification.
-        m_payloads_types_[a_notification] = type;
-
-        // A lock_guard object is created, locking the mutex 'm_mutex_' for the duration of the scope.
-        // This ensures that the following operations are thread-safe.
-        std::lock_guard a_lock(m_mutex_);
-
-        int id;
-        if (!m_free_ids.empty())
-        {
-            id = m_free_ids.top();
-            m_free_ids.pop();
-        }
-        else
-        {
-            set_last_error("No more observer ids");
-            return 0;
-        }
-
-        // A 'notification_observer' object is created with a unique id, which is incremented after the creation.
-        notification_observer a_notification_observer(id, a_notification);
-
-        // A lambda function is being defined here. This lambda takes a single argument of type std::any and also
-        // returns std::any.
-        // The lambda captures 'a_method', which is a function passed from the surrounding scope.
-        auto lambda = [a_method](std::any any) -> std::any
-        {
-            // The input std::any is cast to a std::tuple<std::any>. This assumes that the input std::any contains a
-            // std::tuple<std::any>.
-            auto message = std::any_cast<std::tuple<std::any>>(any);
-
-            // std::apply is used to call 'a_method' with the elements of 'message' tuple as its arguments.
-            // The result of 'a_method' is returned from the lambda.
-            return std::apply(a_method, message);
-        };
-
-        // The callback function 'a_method' is moved into the 'm_callback_' member of the 'notification_observer' object.
-        // This is more efficient than copying, especially for large objects.
-        a_notification_observer.m_callback = std::move(lambda);
-
-        // The 'notification_observer' object is added to the list of observers for the notification 'a_notification'.
-        m_observers_[a_notification].push_back(a_notification_observer);
-
-        // A tuple is created containing the notification and an iterator pointing to the last element in the list
-        // of observers.
-        // The '--' operator is used to get the iterator to the last element, as 'end()' returns an iterator to
-        // one past the last element.
-        auto tuple = std::make_tuple(a_notification, --m_observers_[a_notification].end());
-
-        // The tuple is added to the map 'm_observers_by_id_' with the observer id as the key.
-        m_observers_by_id_[id] = tuple;
-
-        // The observer id is returned from the function.
-        return id;
-    }
-
-    /**
-     * @brief                   This method adds a function callback as an observer to a named notification.
-     * @param a_notification    The name of the notification you wish to observe.
      * @param a_method          The function callback.
      * @return                  The observer id. 0 if the payload types do not match the registered types.
     */
@@ -424,7 +351,7 @@ private:
     /** === Private types === **/
 	typedef std::list<notification_observer>::const_iterator observer_const_itr_t;
 	typedef std::tuple<int, observer_const_itr_t>  notification_tuple_t;
-    
+
     /**
      * @brief                   This method checks if the observer type matches the payload type.
      * @param   a_notification  The notification to check.

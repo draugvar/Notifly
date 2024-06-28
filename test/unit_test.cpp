@@ -7,29 +7,6 @@
 #include "notifly.h"
 #include "unit_test.h"
 
-TEST(notifly, lambda_add_observer)
-{
-    auto lambda = [](std::any any) -> std::any
-    {
-        if(any.has_value())
-        {
-            auto message = std::any_cast<int*>(any);
-            printf("Received notification %d!\n", (*message)++);
-            return 0;
-        }
-        else
-        {
-            printf("No payload!\n");
-            return 1;
-        }
-    };
-
-    auto i1 = notifly::default_notifly().add_observer(poster,lambda);
-
-    notifly::default_notifly().remove_observer(i1);
-    ASSERT_EQ(0, 0);
-}
-
 TEST(notifly, func_add_observer)
 {
     auto i1 = notifly::default_notifly().add_observer(poster, sum_callback);
@@ -93,58 +70,6 @@ TEST(notifly, lambda_and_post_message)
     ASSERT_EQ(ret, true);
 }
 
-TEST(notifly, any_to_any)
-{
-    auto lambda = std::function<std::any(std::any)>([](std::any any) -> std::any
-    {
-        if(any.has_value())
-        {
-            auto message = std::any_cast<int*>(any);
-            printf("Received notification %d!\n", (*message)++);
-            printf("Incremented message to %d\n", *message);
-            return 0;
-        }
-        else
-        {
-            printf("No payload!\n");
-            return 1;
-        }
-    });
-
-    auto i1 = notifly::default_notifly().add_observer(poster, lambda);
-
-    int message = 0;
-    auto ret = notifly::default_notifly().post_notification<std::any>(poster, &message);
-    printf("Message: %d\n", message);
-    ASSERT_EQ(message, 1);
-
-    notifly::default_notifly().remove_observer(i1);
-    ASSERT_EQ(ret, true);
-}
-
-TEST(notifly, nothing_to_wrong_lambda)
-{
-    auto lambda = std::function<std::any(std::any)>([](const std::any& any) -> std::any
-    {
-        if(any.has_value())
-        {
-            return 0;
-        }
-        else
-        {
-            printf("No payload!\n");
-            return 1;
-        }
-    });
-
-    auto i1 = notifly::default_notifly().add_observer(poster, lambda);
-
-    auto ret = notifly::default_notifly().post_notification(poster);
-    ASSERT_EQ(ret, false);
-
-    notifly::default_notifly().remove_observer(i1);
-}
-
 TEST(notifly, nothing_to_lambda)
 {
     auto lambda = std::function<std::any()>([]() -> std::any
@@ -171,103 +96,6 @@ TEST(notifly, int_to_nothing)
     ASSERT_EQ(ret, false);
 }
 
-TEST(notifly, multiple_removes)
-{
-    auto lambda = std::function<std::any(std::any)>([](std::any any) -> std::any
-    {
-        if(any.has_value())
-        {
-            auto message = std::any_cast<int*>(any);
-            printf("Received notification %d!\n", (*message)++);
-            printf("Incremented message to %d\n", *message);
-            return 0;
-        }
-        else
-        {
-            printf("No payload!\n");
-            return 1;
-        }
-    });
-
-    auto i1 = notifly::default_notifly().add_observer(poster, lambda);
-    auto i2 = notifly::default_notifly().add_observer(poster, lambda);
-    auto i3 = notifly::default_notifly().add_observer(poster, lambda);
-    auto i4 = notifly::default_notifly().add_observer(poster, lambda);
-    auto i5 = notifly::default_notifly().add_observer(poster, lambda);
-
-    notifly::default_notifly().remove_observer(i1);
-    notifly::default_notifly().remove_observer(i2);
-    notifly::default_notifly().remove_observer(i3);
-    notifly::default_notifly().remove_observer(i4);
-    notifly::default_notifly().remove_observer(i5);
-
-    auto ret = notifly::default_notifly().post_notification<std::any>(poster, &i1);
-    ASSERT_EQ(ret, false);
-}
-
-TEST(notifly, remove_unexisting_observer)
-{
-    auto lambda = std::function<std::any(std::any)>([](std::any any) -> std::any
-    {
-        if(any.has_value())
-        {
-            auto message = std::any_cast<int*>(any);
-            printf("Received notification %d!\n", (*message)++);
-            printf("Incremented message to %d\n", *message);
-            return 0;
-        }
-        else
-        {
-            printf("No payload!\n");
-            return 1;
-        }
-    });
-
-    auto i1 = notifly::default_notifly().add_observer(poster, lambda);
-    auto i2 = notifly::default_notifly().add_observer(poster, lambda);
-    auto i3 = notifly::default_notifly().add_observer(poster, lambda);
-    auto i4 = notifly::default_notifly().add_observer(poster, lambda);
-    auto i5 = notifly::default_notifly().add_observer(poster, lambda);
-
-    notifly::default_notifly().remove_observer(i1);
-    notifly::default_notifly().remove_observer(i2);
-    notifly::default_notifly().remove_observer(i3);
-    notifly::default_notifly().remove_observer(i4);
-    notifly::default_notifly().remove_observer(i5);
-
-    notifly::default_notifly().remove_observer(i1);
-    auto ret = notifly::default_notifly().post_notification<std::any>(poster, &i1);
-    ASSERT_EQ(ret, false);
-}
-
-TEST(notifly, add_remove_add_observer)
-{
-    auto lambda = std::function<std::any(std::any)>([](std::any any) -> std::any
-    {
-        if(any.has_value())
-        {
-            auto message = std::any_cast<int*>(any);
-            std::cout << "Received notification " << *message << "!" << std::endl;
-            return 0;
-        }
-        else
-        {
-            printf("No payload!\n");
-            return 1;
-        }
-    });
-
-    auto i1 = notifly::default_notifly().add_observer(poster, lambda);
-
-    notifly::default_notifly().remove_observer(i1);
-
-    i1 = notifly::default_notifly().add_observer(poster, lambda);
-
-    auto ret = notifly::default_notifly().post_notification<std::any>(poster, &i1);
-    notifly::default_notifly().remove_observer(i1);
-    ASSERT_EQ(ret, true);
-}
-
 TEST(notifly, add_different_observers)
 {
     auto i1 = notifly::default_notifly().add_observer(poster, sum_callback);
@@ -279,7 +107,7 @@ TEST(notifly, add_different_observers)
     }
 
     auto ret = notifly::default_notifly().post_notification<int, int>(poster, (int)i1, (int)i2);
-    auto ret2 = notifly::default_notifly().post_notification<std::any>(poster, &i2);
+    auto ret2 = notifly::default_notifly().post_notification<int*>(poster, &i2);
 
     notifly::default_notifly().remove_observer(i1);
     notifly::default_notifly().remove_observer(i2);

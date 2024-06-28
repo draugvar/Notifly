@@ -56,10 +56,11 @@ public:
     /**
      * @brief   Constructor. This constructor initializes the observer with a unique identifier.
      */
-    explicit notification_observer(int a_id, int a_notification) :
+    explicit notification_observer(int a_id, int a_notification, std::string a_types) :
         m_id(a_id),
         is_active(false),
-        m_notification(a_notification)
+        m_notification(a_notification),
+        m_types(std::move(a_types))
     {}
 
     // 'm_id_' is a member variable that holds the unique identifier for the observer.
@@ -72,6 +73,8 @@ public:
     bool is_active;
 
     int m_notification;
+
+    std::string m_types;
 };
 
 /**
@@ -117,14 +120,14 @@ public:
         std::string types;
         (..., (types += std::type_index(typeid(Args)).name()));
 
-        // Check if the types string matches the one saved in the map
-        if (!internal_check_observer_type(a_notification, types))
+        if(m_observers_.contains(a_notification))
         {
-            return static_cast<int>(errors::payload_type_not_match);
+            auto& obs = std::get<0>(m_observers_.at(a_notification)).front();
+            if (obs.m_types != types)
+            {
+                return static_cast<int>(errors::payload_type_not_match);
+            }
         }
-
-        // Save the types string in the map
-        m_payloads_types_[a_notification] = types;
 
         // A lock_guard object is created, locking the mutex 'm_mutex_' for the duration of the scope.
         // This ensures that the following operations are thread-safe.
@@ -142,7 +145,7 @@ public:
         }
 
         // A 'notification_observer' object is created with a unique id, which is incremented after the creation.
-        notification_observer a_notification_observer(id, a_notification);
+        notification_observer a_notification_observer(id, a_notification, types);
 
         // A lambda function is being defined here. This lambda takes a single argument of type std::any and
         // also returns std::any.
@@ -163,13 +166,13 @@ public:
         a_notification_observer.m_callback = std::move(lambda);
 
         // The 'notification_observer' object is added to the list of observers for the notification 'a_notification'.
-        m_observers_[a_notification].push_back(a_notification_observer);
+        std::get<0>(m_observers_[a_notification]).push_back(a_notification_observer);
 
         // A tuple is created containing the notification and an iterator pointing to the last element in the list
         // of observers.
         // The '--' operator is used to get the iterator to the last element, as 'end()' returns an iterator to
         // one past the last element.
-        auto tuple = std::make_tuple(a_notification, --m_observers_[a_notification].end());
+        auto tuple = std::make_tuple(a_notification, --std::get<0>(m_observers_[a_notification]).end());
 
         // The tuple is added to the map 'm_observers_by_id_' with the observer id as the key.
         m_observers_by_id_[id] = tuple;
@@ -189,25 +192,24 @@ public:
         if(!m_observers_by_id_.contains(a_observer)) return;
 
         // Retrieve the tuple associated with the observer id from the map.
-        auto tuple = m_observers_by_id_.at(a_observer);
+        auto& [observer_id, iterator] = m_observers_by_id_.at(a_observer);
 
         {
             // Lock the mutex to ensure thread safety during the operation.
             std::lock_guard a_lock(m_mutex_);
 
             // Try to find the notification in the map of observers.
-            if (auto a_notification_iterator = m_observers_.find(std::get<0>(tuple));
+            if (auto a_notification_iterator = m_observers_.find(observer_id);
                     a_notification_iterator != m_observers_.end())
             {
                 // If the notification is found, erase the observer from the list of observers for that notification.
-                a_notification_iterator->second.erase(std::get<1>(tuple));
+                std::get<0>(a_notification_iterator->second).erase(iterator);
 
                 // If there are no more observers for this notification, erase the notification from the map of observers
                 // and also erase the notification from the map of payload types.
-                if(m_observers_.at(std::get<0>(tuple)).empty())
+                if(std::get<0>(a_notification_iterator->second).empty())
                 {
-                    m_observers_.erase(std::get<0>(tuple));
-                    m_payloads_types_.erase(std::get<0>(tuple));
+                    m_observers_.erase(a_notification_iterator);
                 }
             }
             // Push the observer id to the queue of free ids.
@@ -229,7 +231,7 @@ public:
         std::lock_guard a_lock(m_mutex_);
 
         // Iterate over all observers for the given notification.
-        for(const auto& observer: m_observers_.at(a_notification))
+        for(const auto& observer: std::get<0>(m_observers_.at(a_notification)))
         {
             // Push the observer id to the queue of free ids.
             m_free_ids.push(observer.m_id);
@@ -239,7 +241,6 @@ public:
 
         // Erase the notification from the map of observers and the map of payload types.
         m_observers_.erase(a_notification);
-        m_payloads_types_.erase(a_notification);
     }
 
     /**
@@ -265,11 +266,11 @@ public:
         // The names are appended to the 'types' string.
 
         // Check if the types string matches the one saved in the map
-        if(!m_payloads_types_.contains(a_notification))
+        if(!m_observers_.contains(a_notification))
         {
             return static_cast<int>(errors::notification_not_found);
         }
-        else if (m_payloads_types_[a_notification] != types)
+        else if (std::get<0>(m_observers_[a_notification]).front().m_types != types)
         {
             return static_cast<int>(errors::payload_type_not_match);
         }
@@ -285,7 +286,7 @@ public:
         const auto a_notification_iterator = m_observers_.find(a_notification);
 
         // If the notification is found, it retrieves the list of observers for that notification.
-        const auto& a_notification_list = a_notification_iterator->second;
+        const auto& a_notification_list = std::get<0>(a_notification_iterator->second);
 
         // It then iterates over each observer in the list.
         for (const auto& callback : a_notification_list)
@@ -332,22 +333,7 @@ private:
     /** === Private types === **/
 	typedef std::list<notification_observer>::const_iterator observer_const_itr_t;
 	typedef std::tuple<int, observer_const_itr_t>  notification_tuple_t;
-
-    /**
-     * @brief                   This method checks if the observer type matches the payload type.
-     * @param   a_notification  The notification to check.
-     * @param   a_type          The type to check.
-     * @return                  True if the observer type matches the payload type, false otherwise.
-     */
-    bool internal_check_observer_type(int a_notification, const std::string& a_type)
-    {
-        if(m_payloads_types_.contains(a_notification))
-        {
-            return m_payloads_types_[a_notification] == a_type;
-        }
-
-        return true;
-    }
+	typedef std::tuple<std::list<notification_observer>, std::mutex> notification_info_t;
 
     /** === Private members === **/
     // 'm_default_center_' is a static member variable that holds the default notification center.
@@ -355,11 +341,9 @@ private:
     // 'm_free_ids' is a member variable that holds a queue of free observer ids.
     std::stack<int> m_free_ids;
     // 'm_observers_' is a member variable that holds a map of notifications and their observers.
-    std::unordered_map<int, std::list<notification_observer> > m_observers_;
+    std::unordered_map<int, notification_info_t> m_observers_;
     // 'm_observers_by_id_' is a member variable that holds a map of observer ids and their associated tuples.
     std::unordered_map<int, notification_tuple_t> m_observers_by_id_;
-    // 'm_payloads_types_' is a member variable that holds the types of payloads for each notification.
-    std::unordered_map<int, std::string> m_payloads_types_;
 
     // 'm_mutex_' is a member variable that holds a mutex for thread safety.
 	typedef std::recursive_mutex mutex_t;

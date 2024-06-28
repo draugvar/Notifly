@@ -139,7 +139,6 @@ TEST(notifly, critical_section)
 TEST(notifly, different_notifly_instances)
 {
     auto i1 = notifly::default_notifly().add_observer(poster, sum_callback);
-
     notifly another_notifly;
     auto i2 = another_notifly.add_observer(poster, sum_callback);
 
@@ -200,6 +199,38 @@ TEST(notifly, remove_id_0)
 
     notifly::default_notifly().remove_observer(id_1);
     ASSERT_EQ(id_1, 1);
+}
+
+TEST(notifly, remove_id_not_found)
+{
+    auto id_1 = notifly::default_notifly().add_observer(poster, sum_callback);
+    auto id_2 = notifly::default_notifly().add_observer(poster, divide_callback);
+
+    auto ret = notifly::default_notifly().post_notification<int, int>(poster, 5, 3);
+
+    notifly::default_notifly().remove_observer(id_1);
+    notifly::default_notifly().remove_observer(id_2);
+
+    ASSERT_GE(id_1, 1);
+    ASSERT_GE(id_2, 1);
+    ASSERT_EQ(ret, 2);
+}
+
+TEST(notifly, test_wrong_reference)
+{
+    auto lambda = std::function<int(int&)>([](int& a) -> int
+    {
+        printf("The reference is %d\n", a);
+        return 0;
+    });
+    auto id_1 = notifly::default_notifly().add_observer(poster, lambda);
+
+    auto ret = notifly::default_notifly().post_notification<int>(poster, 5);
+
+    notifly::default_notifly().remove_observer(id_1);
+
+    ASSERT_GE(id_1, 1);
+    ASSERT_EQ(ret, (int)errors::payload_type_not_match);
 }
 
 int main(int argc, char **argv)

@@ -118,7 +118,7 @@ public:
     {
         // Generate a unique string for the types of Args
         std::string types;
-        (..., (types += std::type_index(typeid(Args)).name()));
+        (..., (types += stringType<Args>()));
 
         if(m_observers_.contains(a_notification))
         {
@@ -260,7 +260,7 @@ public:
     {
         // Generate a unique string for the types of Args
         std::string types;
-        (..., (types += std::type_index(typeid(Args)).name()));
+        (..., (types += stringType<Args>()));
         // This line is using a fold expression to concatenate the names of the types of the arguments (Args...).
         // std::type_index is used to get a std::type_info for each type, and .name() gets the name of the type.
         // The names are appended to the 'types' string.
@@ -334,6 +334,24 @@ private:
 	typedef std::list<notification_observer>::const_iterator observer_const_itr_t;
 	typedef std::tuple<int, observer_const_itr_t>  notification_tuple_t;
 	typedef std::tuple<std::list<notification_observer>, std::mutex> notification_info_t;
+
+    template <typename T>
+    std::string stringType()
+    {
+        std::string type_name = std::type_index(typeid(T)).name();
+        if (std::is_lvalue_reference<T>::value)
+        {
+            return "(Qxt&)" + type_name;
+        }
+        else if (std::is_rvalue_reference<T>::value)
+        {
+            return "(Qxt&&)" + type_name;
+        }
+        else
+        {
+            return "(Qxt)" + type_name;
+        }
+    }
 
     /** === Private members === **/
     // 'm_default_center_' is a static member variable that holds the default notification center.

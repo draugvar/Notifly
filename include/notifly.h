@@ -103,6 +103,25 @@ public:
         // The key for the map is 'a_notification', which is the identifier for the notification.
         m_payloads_types_[a_notification] = type;
 
+        // A lock_guard object is created, locking the mutex 'm_mutex_' for the duration of the scope.
+        // This ensures that the following operations are thread-safe.
+        std::lock_guard a_lock(m_mutex_);
+
+        int id;
+        if (!m_free_ids.empty())
+        {
+            id = m_free_ids.top();
+            m_free_ids.pop();
+        }
+        else
+        {
+            set_last_error("No more observer ids");
+            return 0;
+        }
+
+        // A 'notification_observer' object is created with a unique id, which is incremented after the creation.
+        notification_observer a_notification_observer(id, a_notification);
+
         // A lambda function is being defined here. This lambda takes a single argument of type std::any and also
         // returns std::any.
         // The lambda captures 'a_method', which is a function passed from the surrounding scope.
@@ -117,9 +136,24 @@ public:
             return std::apply(a_method, message);
         };
 
-        // The lambda is added as an observer for the notification 'a_notification' using the 'internal_add_observer' method.
-        // The id of the observer is returned from the method.
-        return internal_add_observer(a_notification, lambda);
+        // The callback function 'a_method' is moved into the 'm_callback_' member of the 'notification_observer' object.
+        // This is more efficient than copying, especially for large objects.
+        a_notification_observer.m_callback = std::move(lambda);
+
+        // The 'notification_observer' object is added to the list of observers for the notification 'a_notification'.
+        m_observers_[a_notification].push_back(a_notification_observer);
+
+        // A tuple is created containing the notification and an iterator pointing to the last element in the list
+        // of observers.
+        // The '--' operator is used to get the iterator to the last element, as 'end()' returns an iterator to
+        // one past the last element.
+        auto tuple = std::make_tuple(a_notification, --m_observers_[a_notification].end());
+
+        // The tuple is added to the map 'm_observers_by_id_' with the observer id as the key.
+        m_observers_by_id_[id] = tuple;
+
+        // The observer id is returned from the function.
+        return id;
     }
 
     /**
@@ -131,37 +165,7 @@ public:
     template<typename Return, typename ...Args>
     int add_observer(int a_notification, Return(*a_method)(Args... args))
     {
-        // Generate a unique string for the types of Args
-        std::string types;
-        (..., (types += std::type_index(typeid(Args)).name()));
-
-        // Check if the types string matches the one saved in the map
-        if (!internal_check_observer_type(a_notification, types))
-        {
-            set_last_error("The payload types do not match the registered types");
-            return 0;
-        }
-
-        // Save the types string in the map
-        m_payloads_types_[a_notification] = types;
-
-        // A lambda function is being defined here. This lambda takes a single argument of type std::any and also
-        // returns std::any.
-        // The lambda captures 'a_method', which is a function passed from the surrounding scope.
-        auto lambda = [a_method](std::any any) -> std::any
-        {
-            // The input std::any is cast to a std::tuple<Args...>. This assumes that the input std::any
-            // contains a std::tuple<Args...>.
-            auto message = std::any_cast<std::tuple<Args...>>(any);
-
-            // std::apply is used to call 'a_method' with the elements of 'message' tuple as its arguments.
-            // The result of 'a_method' is returned from the lambda.
-            return std::apply(a_method, message);
-        };
-
-        // The lambda is added as an observer for the notification 'a_notification' using the 'internal_add_observer' method.
-        // The id of the observer is returned from the method.
-        return internal_add_observer(a_notification, lambda);
+        return add_observer(a_notification, std::function<Return(Args...)>(a_method));
     }
 
     /**
@@ -171,7 +175,7 @@ public:
      * @return  The observer id.
      */
     template<typename Return, typename ...Args>
-    uint64_t add_observer(int a_notification, std::function<Return(Args ...)> a_method)
+    int add_observer(int a_notification, std::function<Return(Args ...)> a_method)
     {
         // Generate a unique string for the types of Args
         std::string types;
@@ -186,6 +190,25 @@ public:
 
         // Save the types string in the map
         m_payloads_types_[a_notification] = types;
+
+        // A lock_guard object is created, locking the mutex 'm_mutex_' for the duration of the scope.
+        // This ensures that the following operations are thread-safe.
+        std::lock_guard a_lock(m_mutex_);
+
+        int id;
+        if (!m_free_ids.empty())
+        {
+            id = m_free_ids.top();
+            m_free_ids.pop();
+        }
+        else
+        {
+            set_last_error("No more observer ids");
+            return 0;
+        }
+
+        // A 'notification_observer' object is created with a unique id, which is incremented after the creation.
+        notification_observer a_notification_observer(id, a_notification);
 
         // A lambda function is being defined here. This lambda takes a single argument of type std::any and
         // also returns std::any.
@@ -201,9 +224,24 @@ public:
             return std::apply(a_method, message);
         };
 
-        // The lambda is added as an observer for the notification 'a_notification' using the 'internal_add_observer' method.
-        // The id of the observer is returned from the method.
-        return internal_add_observer(a_notification, lambda);
+        // The callback function 'a_method' is moved into the 'm_callback_' member of the 'notification_observer' object.
+        // This is more efficient than copying, especially for large objects.
+        a_notification_observer.m_callback = std::move(lambda);
+
+        // The 'notification_observer' object is added to the list of observers for the notification 'a_notification'.
+        m_observers_[a_notification].push_back(a_notification_observer);
+
+        // A tuple is created containing the notification and an iterator pointing to the last element in the list
+        // of observers.
+        // The '--' operator is used to get the iterator to the last element, as 'end()' returns an iterator to
+        // one past the last element.
+        auto tuple = std::make_tuple(a_notification, --m_observers_[a_notification].end());
+
+        // The tuple is added to the map 'm_observers_by_id_' with the observer id as the key.
+        m_observers_by_id_[id] = tuple;
+
+        // The observer id is returned from the function.
+        return id;
     }
 
 	/**
@@ -312,9 +350,43 @@ public:
         // A std::tuple of the arguments is created and wrapped in a std::any.
         auto payload = std::make_any<std::tuple<Args...>>(std::make_tuple(args...));
 
-        // The 'internal_post_notification' function is called with the notification, the payload, and the 'a_async' flag.
-        // The result of 'internal_post_notification' is returned from the function.
-        return internal_post_notification(a_notification, payload, a_async);
+        // A lock_guard object is created, locking the mutex 'm_mutex_' for the duration of the scope.
+        // This ensures that the following operations are thread-safe.
+        std::lock_guard a_lock(m_mutex_);
+
+        // The code attempts to find the notification 'a_notification' in the 'm_observers_' map.
+        if (const auto a_notification_iterator = m_observers_.find(a_notification);
+                a_notification_iterator != m_observers_.end())
+        {
+            // If the notification is found, it retrieves the list of observers for that notification.
+            const auto& a_notification_list = a_notification_iterator->second;
+
+            // It then iterates over each observer in the list.
+            for (const auto& callback : a_notification_list)
+            {
+                // If 'a_async' is true, it pushes the callback function to the thread pool for asynchronous execution.
+                // The callback function is invoked with 'a_payload' as its argument.
+                if(a_async)
+                {
+                    m_thread_pool_.push([=](int id) { return callback.m_callback(payload);});
+                }
+                    // If 'a_async' is false, it directly invokes the callback function with 'a_payload' as its argument.
+                else
+                {
+                    callback.m_callback(payload);
+                }
+            }
+            // If the notification is found and the callbacks are successfully invoked, it returns true.
+            return true;
+        }
+        else
+        {
+            // If the notification is not found in the 'm_observers_' map, it sets an error message and returns false.
+            std::stringstream a_error;
+            a_error << "Notification " << a_notification << " does not exist.";
+            set_last_error(a_error.str());
+            return false;
+        }
     }
 
     /**
@@ -352,108 +424,7 @@ private:
     /** === Private types === **/
 	typedef std::list<notification_observer>::const_iterator observer_const_itr_t;
 	typedef std::tuple<int, observer_const_itr_t>  notification_tuple_t;
-
-
-    /** === Private methods === **/
-    /**
-     * @breif                   This method adds a function callback as an observer to a named notification.
-     * @param a_notification    The name of the notification you wish to observe.
-     * @param a_method          The function callback. Accepts unsigned any(any) methods or lambdas.
-     * @return                  The observer id.
-    */
-    int internal_add_observer(int a_notification, std::function<std::any(std::any)> a_method)
-    {
-        // A lock_guard object is created, locking the mutex 'm_mutex_' for the duration of the scope.
-        // This ensures that the following operations are thread-safe.
-        std::lock_guard a_lock(m_mutex_);
-
-        int id;
-        if (!m_free_ids.empty())
-        {
-            id = m_free_ids.top();
-            m_free_ids.pop();
-        }
-        else
-        {
-            set_last_error("No more observer ids");
-            return 0;
-        }
-
-        // A 'notification_observer' object is created with a unique id, which is incremented after the creation.
-        notification_observer a_notification_observer(id, a_notification);
-
-        // The callback function 'a_method' is moved into the 'm_callback_' member of the 'notification_observer' object.
-        // This is more efficient than copying, especially for large objects.
-        a_notification_observer.m_callback = std::move(a_method);
-
-        // The 'notification_observer' object is added to the list of observers for the notification 'a_notification'.
-        m_observers_[a_notification].push_back(a_notification_observer);
-
-        // A tuple is created containing the notification and an iterator pointing to the last element in the list
-        // of observers.
-        // The '--' operator is used to get the iterator to the last element, as 'end()' returns an iterator to
-        // one past the last element.
-        auto tuple = std::make_tuple(a_notification, --m_observers_[a_notification].end());
-
-        // The tuple is added to the map 'm_observers_by_id_' with the observer id as the key.
-        m_observers_by_id_[id] = tuple;
-
-        // The observer id is returned from the function.
-        return id;
-    }
-
-    /**
-     * @brief                       This method posts a notification to a set of observers.
-     *                              If successful, this function calls all callbacks associated with that notification
-     *                              and return true. If no such notification exists, this function set an error message
-     *                              and return false.
-     * @param   a_notification      The name of the notification you wish to post.
-     * @param   a_payload           The payload associated with the specified notification.
-     * @param   a_async             If false, this function will run in the same thread as the caller.
-     *                              If true, this function will run in a separate thread.
-     * @return                      True if the notification was successfully posted, false otherwise.
-     */
-    bool internal_post_notification(int a_notification,	const std::any& a_payload = std::any(),	bool a_async = false)
-    {
-        // A lock_guard object is created, locking the mutex 'm_mutex_' for the duration of the scope.
-        // This ensures that the following operations are thread-safe.
-        std::lock_guard a_lock(m_mutex_);
-
-        // The code attempts to find the notification 'a_notification' in the 'm_observers_' map.
-        if (const auto a_notification_iterator = m_observers_.find(a_notification);
-                a_notification_iterator != m_observers_.end())
-        {
-            // If the notification is found, it retrieves the list of observers for that notification.
-            const auto& a_notification_list = a_notification_iterator->second;
-
-            // It then iterates over each observer in the list.
-            for (const auto& callback : a_notification_list)
-            {
-                // If 'a_async' is true, it pushes the callback function to the thread pool for asynchronous execution.
-                // The callback function is invoked with 'a_payload' as its argument.
-                if(a_async)
-                {
-                    m_thread_pool_.push([=](int id) { return callback.m_callback(a_payload);});
-                }
-                // If 'a_async' is false, it directly invokes the callback function with 'a_payload' as its argument.
-                else
-                {
-                    callback.m_callback(a_payload);
-                }
-            }
-            // If the notification is found and the callbacks are successfully invoked, it returns true.
-            return true;
-        }
-        else
-        {
-            // If the notification is not found in the 'm_observers_' map, it sets an error message and returns false.
-            std::stringstream a_error;
-            a_error << "Notification " << a_notification << " does not exist.";
-            set_last_error(a_error.str());
-            return false;
-        }
-    }
-
+    
     /**
      * @brief                   This method checks if the observer type matches the payload type.
      * @param   a_notification  The notification to check.

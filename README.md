@@ -10,7 +10,7 @@ Using `notifly` is simple. In order to use the default center, simply use the st
 method `notifly::default_notifly()` like so:
 
 ```C++
-notifly::default_notifly().add_observer(1, [=]{printf("Hello world!\n");});
+notifly::default_notifly().add_observer(1, [=](){printf("Hello world!\n");});
 ```
 
 Notifly is intended to be included directly in your projects, as such no library (dynamic or static) is
@@ -30,7 +30,8 @@ std::unordered_map
 
 ### Adding Observers
 
-Adding observers is a simple process. Simply invoke the method `notifly::add_observer` passing in a function pointer and integer ID for the notification that this observer should respond to. 
+Adding observers is a simple process. Simply invoke the method `notifly::add_observer` passing in a function pointer 
+and integer ID for the notification that this observer should respond to. 
 
 A couple of examples of how to do this are:
 
@@ -38,8 +39,6 @@ A couple of examples of how to do this are:
 #define MY_NOTIFICATION_ID 1
 notifly::default_notifly().add_observer(MY_NOTIFICATION_ID, [=]{printf("Hello world!\n");});
 notifly::default_notifly().add_observer(MY_NOTIFICATION_ID, helloWorldFunc);
-Foo myFoo;
-notifly::default_notifly().add_observer(MY_NOTIFICATION_ID, std::bind(&Foo::func, myFoo));
 ```
 
 ### Posting Notifications

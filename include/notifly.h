@@ -128,6 +128,8 @@ public:
         }
         else
         {
+            if(m_next_id == std::numeric_limits<int>::max()) return -1;
+
             int newId = m_next_id++;
             m_ids.insert(newId);
             return newId;
@@ -209,6 +211,7 @@ public:
 
         // A unique id is generated for the observer.
         auto id = m_id_manager.get_unique_id();
+        if(id == -1) return static_cast<int>(errors::no_more_observer_ids);
 
         // A 'notification_observer' object is created.
         notification_observer observer(id, a_notification, types);

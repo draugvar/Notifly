@@ -7,6 +7,13 @@
 #include "notifly.h"
 #include "unit_test.h"
 
+TEST(notifly, version)
+{
+    printf("Version: %d.%d.%d\n", NOTIFLY_VERSION_MAJOR, NOTIFLY_VERSION_MINOR, NOTIFLY_VERSION_PATCH);
+    // print hexadecimal version
+    printf("Version hex: 0x%.6x\n", NOTIFLY_VERSION);
+}
+
 TEST(notifly, func_add_observer)
 {
     auto i1 = notifly::default_notifly().add_observer(poster, sum_callback);
@@ -290,6 +297,17 @@ TEST(notifly, lambda_no_params_return_void)
     };
 
     auto id = notifly::default_notifly().add_observer(poster, lambda);
+    auto ret = notifly::default_notifly().post_notification(poster);
+
+    ASSERT_GE(id, 0);
+    ASSERT_GE(ret, 0);
+
+    notifly::default_notifly().remove_observer(id);
+}
+
+TEST(notifly, void_no_params)
+{
+    auto id = notifly::default_notifly().add_observer(poster, void_no_params);
     auto ret = notifly::default_notifly().post_notification(poster);
 
     ASSERT_GE(id, 0);

@@ -73,3 +73,8 @@ int no_params()
     printf("No params\n");
     return 0;
 }
+
+void void_no_params()
+{
+    printf("No params\n");
+}

@@ -38,6 +38,15 @@
 
 #include "threadpool.h"
 
+#define NOTIFLY_VERSION_MAJOR 2
+#define NOTIFLY_VERSION_MINOR 0
+#define NOTIFLY_VERSION_PATCH 0
+
+#define NOTIFLY_VERSION (NOTIFLY_VERSION_MAJOR << 16 | NOTIFLY_VERSION_MINOR << 8 | NOTIFLY_VERSION_PATCH)
+
+/**
+ * @brief   This enum class defines the possible errors that can occur when using the notification center.
+ */
 enum class errors
 {
     success =                    0,

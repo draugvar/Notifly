@@ -72,10 +72,10 @@ public:
         m_types(std::move(a_types))
     {}
 
-    // 'm_id_' is a member variable that holds the unique identifier for the observer.
+    // 'm_id' is a member variable that holds the unique identifier for the observer.
     int m_id;
 
-    // 'm_callback_' is a member variable that holds the callback function to be invoked when a notification is posted.
+    // 'm_callback' is a member variable that holds the callback function to be invoked when a notification is posted.
     // The callback function takes a std::any parameter and returns a std::any value.
     std::function<std::any(std::any)> m_callback;
 
@@ -143,6 +143,7 @@ public:
             }
         }
 
+        // A unique id is generated for the observer.
         int id;
         if (!m_free_ids.empty())
         {
@@ -366,7 +367,7 @@ private:
     /** === Private types === **/
 	typedef std::list<notification_observer>::const_iterator observer_const_itr_t;
 	typedef std::tuple<int, observer_const_itr_t>  notification_tuple_t;
-	typedef std::tuple<std::list<notification_observer>, std::mutex> notification_info_t;
+	typedef std::tuple<std::list<notification_observer>, std::unique_ptr<std::mutex>> notification_info_t;
 
     /** === Private methods === **/
     /**

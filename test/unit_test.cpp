@@ -316,6 +316,37 @@ TEST(notifly, void_no_params)
     notifly::default_notifly().remove_observer(id);
 }
 
+TEST(notifly, remove_observers)
+{
+    auto id = notifly::default_notifly().add_observer(poster, sum_callback);
+    auto ret = notifly::default_notifly().remove_observer(id);
+
+    ASSERT_GE(id, 0);
+    ASSERT_EQ(ret, 0);
+}
+
+TEST(notifly, fail_remove_observers)
+{
+    auto ret = notifly::default_notifly().remove_observer(0xFF);
+    ASSERT_EQ(ret, (int) errors::observer_not_found);
+}
+
+TEST(notifly, remove_all_observers)
+{
+    auto ret = notifly::default_notifly().remove_all_observers(poster);
+
+    notifly::default_notifly().add_observer(poster, sum_callback);
+    notifly::default_notifly().add_observer(poster, sum_callback);
+    notifly::default_notifly().add_observer(poster, sum_callback);
+    notifly::default_notifly().add_observer(poster, sum_callback);
+    notifly::default_notifly().add_observer(poster, sum_callback);
+
+    auto ret_all = notifly::default_notifly().remove_all_observers(poster);
+
+    ASSERT_EQ(ret, 0);
+    ASSERT_EQ(ret_all, 5);
+}
+
 int main(int argc, char **argv)
 {
     ::testing::InitGoogleTest(&argc, argv);

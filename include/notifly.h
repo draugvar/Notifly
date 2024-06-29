@@ -203,12 +203,12 @@ public:
 	/**
 	 * @brief               This method removes an observer by iterator.
 	 * @param a_observer    The observer you wish to remove.
-	 * @return              Void.
+	 * @return              0 if successful or an error code.
 	 */
-	void remove_observer(int a_observer)
+	int remove_observer(int a_observer)
     {
         // Check if the observer is not in the map of observers by id. If it's not, exit the function.
-        if(!m_observers_by_id.contains(a_observer)) return;
+        if(!m_observers_by_id.contains(a_observer)) return static_cast<int>(errors::observer_not_found);
 
         // Retrieve the tuple associated with the observer id from the map.
         auto& [observer_id, iterator] = m_observers_by_id.at(a_observer);
@@ -237,20 +237,32 @@ public:
 
         // Finally, erase the observer from the map of observers by id.
         m_observers_by_id.erase(a_observer);
+
+        return static_cast<int>(errors::success);
     }
 
     /**
      * @brief                       This method removes all observers from a given notification, removing the
      *                              notification from being tracked outright.
      * @param   a_notification      The name of the notification you wish to remove.
+     * @return                      The number of observers that were successfully removed or an error code.
      */
-    void remove_all_observers(int a_notification)
+    int remove_all_observers(int a_notification)
     {
         // Lock the mutex to ensure thread safety during the operation.
         std::lock_guard a_lock(m_mutex);
 
+        // Check if the notification is not in the map of observers. If it's not, exit the function.
+        if(!m_observers.contains(a_notification)) return 0;
+
+        // Get the list of observers for the given notification.
+        auto observers_by_notification = std::get<0>(m_observers.at(a_notification));
+
+        // Get the number of observers for the given notification.
+        auto ret = observers_by_notification.size();
+
         // Iterate over all observers for the given notification.
-        for(const auto& observer: std::get<0>(m_observers.at(a_notification)))
+        for(const auto& observer: observers_by_notification)
         {
             // Push the observer id to the queue of free ids.
             m_free_ids.push(observer.m_id);
@@ -260,6 +272,8 @@ public:
 
         // Erase the notification from the map of observers and the map of payload types.
         m_observers.erase(a_notification);
+
+        return static_cast<int>(ret);
     }
 
     /**

@@ -21,7 +21,7 @@ TEST(notifly, func_add_observer)
     auto ret = notifly::default_notifly().post_notification<int, long>(poster, 5, 10);
 
     notifly::default_notifly().remove_observer(i1);
-    ASSERT_EQ(ret, (int)errors::payload_type_not_match);
+    ASSERT_EQ(ret, (int)notifly_error::payload_type_not_match);
 }
 
 TEST(notifly, add_observer_struct)
@@ -33,7 +33,7 @@ TEST(notifly, add_observer_struct)
     // so it will fail.
     auto ret = notifly::default_notifly().post_notification<point>(poster, a_point);
     notifly::default_notifly().remove_observer(i1);
-    ASSERT_EQ(ret, (int)errors::payload_type_not_match);
+    ASSERT_EQ(ret, (int)notifly_error::payload_type_not_match);
 }
 
 TEST(notifly, struct_add_observer_and_post_message)
@@ -87,7 +87,7 @@ TEST(notifly, nothing_to_lambda)
 TEST(notifly, int_to_nothing)
 {
     auto ret = notifly::default_notifly().post_notification<int>(poster, 5);
-    ASSERT_EQ(ret, (int) errors::notification_not_found);
+    ASSERT_EQ(ret, (int) notifly_error::notification_not_found);
 }
 
 TEST(notifly, add_different_observers)
@@ -101,9 +101,9 @@ TEST(notifly, add_different_observers)
     notifly::default_notifly().remove_observer(i1);
     notifly::default_notifly().remove_observer(i2);
 
-    ASSERT_EQ(i2, (int) errors::payload_type_not_match);
+    ASSERT_EQ(i2, (int) notifly_error::payload_type_not_match);
     ASSERT_GE(ret1, 0);
-    ASSERT_EQ(ret2, (int) errors::payload_type_not_match);
+    ASSERT_EQ(ret2, (int) notifly_error::payload_type_not_match);
 }
 
 TEST(notifly, critical_section)
@@ -237,7 +237,7 @@ TEST(notifly, test_wrong_reference)
     notifly::default_notifly().remove_observer(id_1);
 
     ASSERT_GE(id_1, 1);
-    ASSERT_EQ(ret, (int)errors::payload_type_not_match);
+    ASSERT_EQ(ret, (int)notifly_error::payload_type_not_match);
 }
 
 TEST(notifly, multiple_observers)
@@ -328,7 +328,7 @@ TEST(notifly, remove_observers)
 TEST(notifly, fail_remove_observers)
 {
     auto ret = notifly::default_notifly().remove_observer(0xFF);
-    ASSERT_EQ(ret, (int) errors::observer_not_found);
+    ASSERT_EQ(ret, (int) notifly_error::observer_not_found);
 }
 
 TEST(notifly, remove_all_observers)

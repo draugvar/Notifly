@@ -56,8 +56,10 @@ enum class errors
     no_more_observer_ids =      -4
 };
 
+
+
 /**
- * @brief   This struct is an observer that is used to observe notifications.
+ * @brief   This class is an observer that is used to observe notifications.
  */
 class notification_observer
 {
@@ -66,24 +68,90 @@ public:
      * @brief   Constructor. This constructor initializes the observer with a unique identifier.
      */
     explicit notification_observer(int a_id, int a_notification, std::string a_types) :
-        m_id(a_id),
-        is_active(false),
-        m_notification(a_notification),
-        m_types(std::move(a_types))
+            m_id(a_id),
+            is_active(false),
+            m_notification(a_notification),
+            m_types(std::move(a_types)),
+            m_callback(nullptr)
     {}
 
-    // 'm_id' is a member variable that holds the unique identifier for the observer.
-    int m_id;
+    /**
+     * @brief   Get the observer id.
+     */
+    int get_id() const
+    {
+        return m_id;
+    }
+
+    /**
+     * @brief   Get the types of the arguments for the callback function.
+     */
+    std::string get_types() const
+    {
+        return m_types;
+    }
 
     // 'm_callback' is a member variable that holds the callback function to be invoked when a notification is posted.
     // The callback function takes a std::any parameter and returns a std::any value.
     std::function<std::any(std::any)> m_callback;
 
+private:
+    // 'm_id' is a member variable that holds the unique identifier for the observer.
+    int m_id;
+
+    // 'm_types' is a member variable that holds the types of the arguments for the callback function.
+    std::string m_types;
+
+    // 'is_active' is a member variable that holds a flag to indicate whether the observer is active.
     bool is_active;
 
+    // 'm_notification' is a member variable that holds the name of the notification that the observer is observing.
     int m_notification;
+};
 
-    std::string m_types;
+class id_manager
+{
+public:
+    /**
+     * @brief   Get a unique identifier.
+     */
+    int get_unique_id()
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        if (!m_released_ids.empty())
+        {
+            int id = m_released_ids.top();
+            m_released_ids.pop();
+            m_ids.insert(id);
+            return id;
+        }
+        else
+        {
+            int newId = m_next_id++;
+            m_ids.insert(newId);
+            return newId;
+        }
+    }
+
+    /**
+     * @brief   Release an identifier.
+     */
+    void release_id(int id)
+    {
+        std::lock_guard<std::mutex> lock(m_mutex);
+        m_ids.erase(id);
+        m_released_ids.push(id);
+    }
+
+private:
+    // Member variable that holds a set of all the IDs that have been used.
+    std::set<int> m_ids;
+    // Member variable that holds a stack of all the IDs that have been released.
+    std::stack<int> m_released_ids;
+    // Member variable that holds the next available ID.
+    int m_next_id = 1;
+    // Member variable that holds a mutex for thread safety.
+    std::mutex m_mutex;
 };
 
 /**
@@ -97,13 +165,8 @@ public:
      */
     notifly() : m_thread_pool(5) // Default thread-pool initialization to just 1 thread
     {
-        // Initialize the free ids stack with max ull value
-        for(auto i = 2000; i >= 1; --i)
-        {
-            m_free_ids.push(i);
-        }
-    }
 
+    }
 
     /**
      * @brief                   This method adds a function callback as an observer to a named notification.
@@ -137,26 +200,17 @@ public:
         if(m_observers.contains(a_notification))
         {
             auto& obs = std::get<0>(m_observers.at(a_notification)).front();
-            if (obs.m_types != types)
+            if (obs.get_types() != types)
             {
                 return static_cast<int>(errors::payload_type_not_match);
             }
         }
 
         // A unique id is generated for the observer.
-        int id;
-        if (!m_free_ids.empty())
-        {
-            id = m_free_ids.top();
-            m_free_ids.pop();
-        }
-        else
-        {
-            return static_cast<int>(errors::no_more_observer_ids);
-        }
+        auto id = m_id_manager.get_unique_id();
 
-        // A 'notification_observer' object is created with a unique id, which is incremented after the creation.
-        notification_observer a_notification_observer(id, a_notification, types);
+        // A 'notification_observer' object is created.
+        notification_observer observer(id, a_notification, types);
 
         // A lambda function is being defined here. This lambda takes a single argument of type std::any and
         // also returns std::any.
@@ -183,10 +237,10 @@ public:
 
         // The callback function 'a_method' is moved into the 'm_callback_' member of the 'notification_observer' object.
         // This is more efficient than copying, especially for large objects.
-        a_notification_observer.m_callback = std::move(lambda);
+        observer.m_callback = std::move(lambda);
 
         // The 'notification_observer' object is added to the list of observers for the notification 'a_notification'.
-        std::get<0>(m_observers[a_notification]).push_back(a_notification_observer);
+        std::get<0>(m_observers[a_notification]).push_back(observer);
 
         // A tuple is created containing the notification and an iterator pointing to the last element in the list
         // of observers.
@@ -232,12 +286,12 @@ public:
                     m_observers.erase(a_notification_iterator);
                 }
             }
-            // Push the observer id to the queue of free ids.
-            m_free_ids.push(a_observer);
         }
 
         // Finally, erase the observer from the map of observers by id.
         m_observers_by_id.erase(a_observer);
+        // Release the observer id.
+        m_id_manager.release_id(a_observer);
 
         return static_cast<int>(errors::success);
     }
@@ -265,10 +319,10 @@ public:
         // Iterate over all observers for the given notification.
         for(const auto& observer: observers_by_notification)
         {
-            // Push the observer id to the queue of free ids.
-            m_free_ids.push(observer.m_id);
             // Erase the observer from the map of observers by id.
-            m_observers_by_id.erase(observer.m_id);
+            m_observers_by_id.erase(observer.get_id());
+            // Release the observer id.
+            m_id_manager.release_id(observer.get_id());
         }
 
         // Erase the notification from the map of observers and the map of payload types.
@@ -308,7 +362,7 @@ public:
         {
             return static_cast<int>(errors::notification_not_found);
         }
-        else if (std::get<0>(m_observers[a_notification]).front().m_types != types)
+        else if (std::get<0>(m_observers[a_notification]).front().get_types() != types)
         {
             return static_cast<int>(errors::payload_type_not_match);
         }
@@ -396,8 +450,6 @@ private:
     /** === Private members === **/
     // 'm_default_center' is a static member variable that holds the default notification center.
 	static std::shared_ptr<notifly> m_default_center;
-    // 'm_free_ids' is a member variable that holds a queue of free observer ids.
-    std::stack<int> m_free_ids;
     // 'm_observers' is a member variable that holds a map of notifications and their observers.
     std::unordered_map<int, notification_info_t> m_observers;
     // 'm_observers_by_id' is a member variable that holds a map of observer ids and their associated tuples.
@@ -409,4 +461,7 @@ private:
 
     // 'm_thread_pool' is a member variable that holds a thread pool for asynchronous notifications.
 	tp::thread_pool m_thread_pool;
+
+    // 'm_id_manager' is a member variable that holds an id manager for managing unique observer ids.
+    id_manager m_id_manager;
 };

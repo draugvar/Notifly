@@ -105,22 +105,16 @@ public:
     }
 
 
+    /**
+     * @brief                   This method adds a function callback as an observer to a named notification.
+     * @param   a_notification  The name of the notification you wish to observe.
+     * @param   a_method        The function callback.
+     * @return                  The observer id > 0 if successful or an error code
+     */
     template<typename Callable>
     int add_observer(int a_notification, Callable a_method)
     {
         return add_observer(a_notification, std::function(std::move(a_method)));
-    }
-
-    /**
-     * @brief                   This method adds a function callback as an observer to a named notification.
-     * @param a_notification    The name of the notification you wish to observe.
-     * @param a_method          The function callback.
-     * @return                  The observer id > 0 if successful or an error code
-    */
-    template<typename Return, typename ...Args>
-    int add_observer(int a_notification, Return(*a_method)(Args... args))
-    {
-        return add_observer(a_notification, std::function<Return(Args...)>(a_method));
     }
 
     /**

@@ -233,6 +233,26 @@ TEST(notifly, test_wrong_reference)
     ASSERT_EQ(ret, (int)errors::payload_type_not_match);
 }
 
+TEST(notifly, multiple_observers)
+{
+    std::vector<int> observers;
+    observers.reserve(100);
+    for(auto i = 0; i < 100; ++i)
+    {
+        auto id = notifly::default_notifly().add_observer(poster, sum_callback);
+        observers.push_back(id);
+    }
+
+    auto ret_sync = notifly::default_notifly().post_notification<int, int>(poster, 9, 9);
+    auto ret_async = notifly::default_notifly().post_notification<int, int>(poster, 9, 9, true);
+    for(const auto& observer: observers)
+    {
+        notifly::default_notifly().remove_observer(observer);
+    }
+    ASSERT_EQ(ret_sync, 100);
+    ASSERT_EQ(ret_async, 100);
+}
+
 int main(int argc, char **argv)
 {
     ::testing::InitGoogleTest(&argc, argv);

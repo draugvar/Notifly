@@ -40,7 +40,7 @@
 
 enum class errors
 {
-    no_error =                   0,
+    success =                   0,
     observer_not_found =        -1,
     notification_not_found =    -2,
     payload_type_not_match =    -3,
@@ -120,6 +120,10 @@ public:
         std::string types;
         (..., (types += stringType<Args>()));
 
+        // A lock_guard object is created, locking the mutex 'm_mutex_' for the duration of the scope.
+        // This ensures that the following operations are thread-safe.
+        std::lock_guard a_lock(m_mutex_);
+
         if(m_observers_.contains(a_notification))
         {
             auto& obs = std::get<0>(m_observers_.at(a_notification)).front();
@@ -128,10 +132,6 @@ public:
                 return static_cast<int>(errors::payload_type_not_match);
             }
         }
-
-        // A lock_guard object is created, locking the mutex 'm_mutex_' for the duration of the scope.
-        // This ensures that the following operations are thread-safe.
-        std::lock_guard a_lock(m_mutex_);
 
         int id;
         if (!m_free_ids.empty())
@@ -265,6 +265,10 @@ public:
         // std::type_index is used to get a std::type_info for each type, and .name() gets the name of the type.
         // The names are appended to the 'types' string.
 
+        // A lock_guard object is created, locking the mutex 'm_mutex_' for the duration of the scope.
+        // This ensures that the following operations are thread-safe.
+        std::lock_guard a_lock(m_mutex_);
+
         // Check if the types string matches the one saved in the map
         if(!m_observers_.contains(a_notification))
         {
@@ -277,10 +281,6 @@ public:
 
         // A std::tuple of the arguments is created and wrapped in a std::any.
         auto payload = std::make_any<std::tuple<Args...>>(std::make_tuple(args...));
-
-        // A lock_guard object is created, locking the mutex 'm_mutex_' for the duration of the scope.
-        // This ensures that the following operations are thread-safe.
-        std::lock_guard a_lock(m_mutex_);
 
         // The code attempts to find the notification 'a_notification' in the 'm_observers_' map.
         const auto a_notification_iterator = m_observers_.find(a_notification);
@@ -335,6 +335,12 @@ private:
 	typedef std::tuple<int, observer_const_itr_t>  notification_tuple_t;
 	typedef std::tuple<std::list<notification_observer>, std::mutex> notification_info_t;
 
+    /** === Private methods === **/
+    /**
+     * @brief       This method returns a string representation of the type 'T'.
+     * @tparam  T   The type to get the string representation of.
+     * @return      A string representation of the type 'T'.
+     */
     template <typename T>
     std::string stringType()
     {

@@ -63,20 +63,11 @@ int sum(int a, int b)
 
 void run_notification()
 {
-	auto lambda = [](std::any any) -> std::any
+	auto lambda = std::function<std::any(int*)>([](int* message) -> std::any
 	{
-		if(any.has_value())
-		{
-			auto message = std::any_cast<int*>(any);
-			printf("Received notification %d!\n", (*message)++);
-			return 0;
-		}
-		else
-		{
-			printf("No payload!\n");
-			return 1;
-		}
-	};
+        printf("Received notification %d!\n", (*message)++);
+        return 0;
+	});
 
 	auto i1 = notifly::default_notifly().add_observer(
 		poster,
@@ -110,11 +101,11 @@ void run_notification()
 
 	notifly::default_notifly().add_observer(
 		poster,
-		[](const std::any&) -> unsigned int
+		std::function<unsigned int(const std::any&)>([](const std::any&) -> unsigned int
 		{
 			printf("Received notification, but idc of payload...\n");
 			return 0;
-		});
+		}));
 
 	auto value = 1;
 	printf("I'm sending an int that has value %d\n", value);
@@ -125,11 +116,11 @@ void run_notification()
 
 	notifly::default_notifly().add_observer(
 		third_poster,
-		[](const std::any&) -> unsigned int
+		std::function<unsigned int(const int)>([](const int) -> unsigned int
 		{
 			printf("Received ASYNC notification, but idc of payload...\n");
 			return 0;
-		});
+		}));
 
 	// Resizing thread pool
 	notifly::default_notifly().resize_thread_pool(10);
@@ -173,18 +164,22 @@ void run_notification()
 
 	notifly::default_notifly().add_observer(
 		second_poster,
-		[=](const std::any&) -> unsigned int
+		std::function<unsigned int(const std::any&)>([=](const std::any&) -> unsigned int
 		{
 			printf("Called!\n");
 			return 0;
-		});
+		}));
 
 	struct point a_point { 1, 1 };
 	printf("Point x.value = %d\n", a_point.x);
 	printf("Point y.value = %d\n", a_point.y);
 	notifly::default_notifly().add_observer(
-		second_poster,
-		std::bind(&foo::func, &a_point, 1));  // NOLINT(modernize-avoid-bind)
+            second_poster,
+            std::function<int()>([capture0 = &a_point]() -> int
+            {
+                foo::func(capture0, 1);
+                return 0;
+            }));
 
 	notifly::default_notifly().post_notification(second_poster);
 	printf("Point x.value = %d\n", a_point.x);
@@ -192,16 +187,16 @@ void run_notification()
 
     notifly::default_notifly().add_observer(fourth_poster, sum);
     auto ret = notifly::default_notifly().post_notification<int, std::string>(fourth_poster, 5, "ciao", false);
-    if(!ret)
+    if(ret < 0)
     {
-        printf("Error: %s\n", notifly::default_notifly().get_last_error().c_str());
+        printf("Error: %d\n", ret);
     }
     notifly::default_notifly().post_notification<int, int>(fourth_poster, 5, 7, true);
 
     ret = notifly::default_notifly().post_notification<int, long>(fourth_poster, 5, 7000, true);
-    if(!ret)
+    if(ret < 0)
     {
-        printf("Error: %s\n", notifly::default_notifly().get_last_error().c_str());
+        printf("Error: %d\n", ret);
     }
 
     notifly::default_notifly().remove_all_observers(fourth_poster);

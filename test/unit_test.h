@@ -10,20 +10,6 @@ typedef struct point_
     int x, y;
 } point;
 
-class foo
-{
-public:
-    // ReSharper disable once CppMemberFunctionMayBeStatic
-    static unsigned int func(point* a_point, int a_value)
-    {
-        printf("Hello std::bind!\n");
-        a_point->x = 11;
-        a_point->y = 23;
-        printf("Hello value %d\n", a_value);
-        return 0;
-    }
-};
-
 enum message
 {
     poster,
@@ -36,6 +22,12 @@ int sum_callback(int a, int b)
 {
     printf("Sum is %d\n", a + b);
     return a + b;
+}
+
+float divide_callback(int a, int b)
+{
+    printf("Division is %f\n", (float)a / (float)b);
+    return (float)a / (float)b;
 }
 
 int print_struct(point* a_point)
@@ -74,4 +66,15 @@ int just_increment_and_print(std::atomic_int* a_value)
     }
 
     return 0;
+}
+
+int no_params()
+{
+    printf("No params\n");
+    return 0;
+}
+
+void void_no_params()
+{
+    printf("No params\n");
 }

@@ -35,6 +35,7 @@
 #include <utility>
 #include <thread>
 #include <stack>
+#include <set>
 
 #include "threadpool.h"
 

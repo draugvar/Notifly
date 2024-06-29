@@ -253,6 +253,51 @@ TEST(notifly, multiple_observers)
     ASSERT_EQ(ret_async, 100);
 }
 
+TEST(notifly, no_params)
+{
+    auto id = notifly::default_notifly().add_observer(poster, no_params);
+    auto ret = notifly::default_notifly().post_notification(poster);
+
+    ASSERT_GE(id, 0);
+    ASSERT_GE(ret, 0);
+
+    notifly::default_notifly().remove_observer(id);
+}
+
+TEST(notifly, lambda_no_params)
+{
+    auto lambda = []() -> int
+    {
+        printf("No params\n");
+        return 0;
+    };
+
+    auto id = notifly::default_notifly().add_observer(poster, lambda);
+    auto ret = notifly::default_notifly().post_notification(poster);
+
+    ASSERT_GE(id, 0);
+    ASSERT_GE(ret, 0);
+
+    notifly::default_notifly().remove_observer(id);
+}
+
+TEST(notifly, lambda_no_params_return_void)
+{
+    auto lambda = []()
+    {
+        printf("No params\n");
+        return;
+    };
+
+    auto id = notifly::default_notifly().add_observer(poster, lambda);
+    auto ret = notifly::default_notifly().post_notification(poster);
+
+    ASSERT_GE(id, 0);
+    ASSERT_GE(ret, 0);
+
+    notifly::default_notifly().remove_observer(id);
+}
+
 int main(int argc, char **argv)
 {
     ::testing::InitGoogleTest(&argc, argv);

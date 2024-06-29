@@ -40,7 +40,7 @@
 
 enum class errors
 {
-    success =                   0,
+    success =                    0,
     observer_not_found =        -1,
     notification_not_found =    -2,
     payload_type_not_match =    -3,
@@ -93,6 +93,13 @@ public:
         {
             m_free_ids.push(i);
         }
+    }
+
+
+    template<typename Callable>
+    int add_observer(int a_notification, Callable a_method)
+    {
+        return add_observer(a_notification, std::function(std::move(a_method)));
     }
 
     /**
@@ -156,9 +163,18 @@ public:
             // a std::tuple<Args...>.
             auto message = std::any_cast<std::tuple<Args...>>(any);
 
-            // std::apply is used to call 'a_method' with the elements of 'message' tuple as its arguments.
-            // The result of 'a_method' is returned from the lambda.
-            return std::apply(a_method, message);
+            // If the return type of the function is void (i.e., the function does not return anything),
+            if constexpr (std::is_same_v<Return, void>)
+            {
+                // The function is invoked with the arguments from the tuple 'message'.
+                std::apply(a_method, message);
+                return {};
+            }
+            else
+            {
+                // If the return type of the function is not void (i.e., the function returns something),
+                return std::apply(a_method, message);
+            }
         };
 
         // The callback function 'a_method' is moved into the 'm_callback_' member of the 'notification_observer' object.

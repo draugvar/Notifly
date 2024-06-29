@@ -67,3 +67,9 @@ int just_increment_and_print(std::atomic_int* a_value)
 
     return 0;
 }
+
+int no_params()
+{
+    printf("No params\n");
+    return 0;
+}

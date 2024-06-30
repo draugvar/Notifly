@@ -46,9 +46,9 @@
 #define NOTIFLY_VERSION (NOTIFLY_VERSION_MAJOR << 16 | NOTIFLY_VERSION_MINOR << 8 | NOTIFLY_VERSION_PATCH)
 
 /**
- * @brief   This enum class defines the possible notifly_error that can occur when using the notification center.
+ * @brief   This enum class defines the possible notifly_result that can occur when using the notification center.
  */
-enum class notifly_error
+enum class notifly_result
 {
     success =                    0,
     observer_not_found =        -1,
@@ -205,13 +205,13 @@ public:
             auto& obs = std::get<0>(m_observers.at(a_notification)).front();
             if (obs.get_types() != types)
             {
-                return static_cast<int>(notifly_error::payload_type_not_match);
+                return static_cast<int>(notifly_result::payload_type_not_match);
             }
         }
 
         // A unique id is generated for the observer.
         auto id = m_id_manager.get_unique_id();
-        if(id == -1) return static_cast<int>(notifly_error::no_more_observer_ids);
+        if(id == -1) return static_cast<int>(notifly_result::no_more_observer_ids);
 
         // A 'notification_observer' object is created.
         notification_observer observer(id, a_notification, types);
@@ -267,7 +267,7 @@ public:
 	int remove_observer(int a_observer)
     {
         // Check if the observer is not in the map of observers by id. If it's not, exit the function.
-        if(!m_observers_by_id.contains(a_observer)) return static_cast<int>(notifly_error::observer_not_found);
+        if(!m_observers_by_id.contains(a_observer)) return static_cast<int>(notifly_result::observer_not_found);
 
         // Retrieve the tuple associated with the observer id from the map.
         auto& [observer_id, iterator] = m_observers_by_id.at(a_observer);
@@ -297,7 +297,7 @@ public:
         // Release the observer id.
         m_id_manager.release_id(a_observer);
 
-        return static_cast<int>(notifly_error::success);
+        return static_cast<int>(notifly_result::success);
     }
 
     /**
@@ -364,11 +364,11 @@ public:
         // Check if the types string matches the one saved in the map
         if(!m_observers.contains(a_notification))
         {
-            return static_cast<int>(notifly_error::notification_not_found);
+            return static_cast<int>(notifly_result::notification_not_found);
         }
         else if (std::get<0>(m_observers[a_notification]).front().get_types() != types)
         {
-            return static_cast<int>(notifly_error::payload_type_not_match);
+            return static_cast<int>(notifly_result::payload_type_not_match);
         }
 
         // A std::tuple of the arguments is created and wrapped in a std::any.

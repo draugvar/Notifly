@@ -121,9 +121,7 @@ void run_notification()
 			printf("Received ASYNC notification, but idc of payload...\n");
 			return 0;
 		}));
-
-	// Resizing thread pool
-	notifly::default_notifly().resize_thread_pool(10);
+	
 	notifly::default_notifly().post_notification<std::any>(third_poster, std::any(), true);
 
 	notifly::default_notifly().remove_observer(i1);

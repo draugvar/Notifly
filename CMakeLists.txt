@@ -12,11 +12,11 @@ add_executable(${PROJECT_NAME}
 set_target_properties(${PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
 
-### Google Test
-# Google test suite
 include(FetchContent)
 
+#
 # Google Test
+#
 option(BUILD_GMOCK "Build Google test's GMock?" OFF)
 option(INSTALL_GMOCK "Install Google test's GMock?" OFF)
 option(INSTALL_GTEST "Install Google test's GTest?" OFF)
@@ -57,3 +57,13 @@ set_target_properties(${UNIT_TEST}
         OUTPUT_NAME ${UNIT_TEST}
         MSVC_RUNTIME_LIBRARY MultiThreaded$<$<CONFIG:Debug>:Debug>
         )
+
+# PartyThreads
+FetchContent_Declare(
+        partythreads
+        GIT_REPOSITORY https://github.com/draugvar/PartyThreads.git
+        GIT_TAG main
+)
+FetchContent_Populate(partythreads)
+
+include_directories(${partythreads_SOURCE_DIR}/include)

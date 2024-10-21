@@ -32,12 +32,11 @@
 #include <mutex>
 #include <any>
 #include <typeindex>
-#include <utility>
 #include <thread>
 #include <stack>
 #include <set>
 
-#include "threadpool.h"
+#include "PartyThreads.h"
 
 #define NOTIFLY_VERSION_MAJOR 2
 #define NOTIFLY_VERSION_MINOR 0
@@ -68,12 +67,12 @@ public:
     /**
      * @brief   Constructor. This constructor initializes the observer with a unique identifier.
      */
-    explicit notification_observer(int a_id, int a_notification, std::string a_types) :
+    explicit notification_observer(const int a_id, const int a_notification, std::string a_types) :
+            m_callback(nullptr),
             m_id(a_id),
-            is_active(false),
-            m_notification(a_notification),
             m_types(std::move(a_types)),
-            m_callback(nullptr)
+            is_active(false),
+            m_notification(a_notification)
     {}
 
     /**
@@ -118,30 +117,27 @@ public:
      */
     int get_unique_id()
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard lock(m_mutex);
         if (!m_released_ids.empty())
         {
-            int id = m_released_ids.top();
+            const int id = m_released_ids.top();
             m_released_ids.pop();
             m_ids.insert(id);
             return id;
         }
-        else
-        {
-            if(m_next_id == std::numeric_limits<int>::max()) return -1;
+        if(m_next_id == std::numeric_limits<int>::max()) return -1;
 
-            int newId = m_next_id++;
-            m_ids.insert(newId);
-            return newId;
-        }
+        const int newId = m_next_id++;
+        m_ids.insert(newId);
+        return newId;
     }
 
     /**
      * @brief   Release an identifier.
      */
-    void release_id(int id)
+    void release_id(const int id)
     {
-        std::lock_guard<std::mutex> lock(m_mutex);
+        std::lock_guard lock(m_mutex);
         m_ids.erase(id);
         m_released_ids.push(id);
     }
@@ -166,10 +162,8 @@ public:
 	/**
      * @brief   Constructor.
      */
-    notifly() : m_thread_pool(5) // Default thread-pool initialization to just 1 thread
-    {
-
-    }
+    notifly() : m_pool(20) // Default thread-pool initialization to just 1 thread
+    {}
 
     /**
      * @brief                   This method adds a function callback as an observer to a named notification.
@@ -202,15 +196,14 @@ public:
 
         if(m_observers.contains(a_notification))
         {
-            auto& obs = std::get<0>(m_observers.at(a_notification)).front();
-            if (obs.get_types() != types)
+            if (auto& obs = std::get<0>(m_observers.at(a_notification)).front(); obs.get_types() != types)
             {
                 return static_cast<int>(notifly_result::payload_type_not_match);
             }
         }
 
         // A unique id is generated for the observer.
-        auto id = m_id_manager.get_unique_id();
+        const auto id = m_id_manager.get_unique_id();
         if(id == -1) return static_cast<int>(notifly_result::no_more_observer_ids);
 
         // A 'notification_observer' object is created.
@@ -264,15 +257,14 @@ public:
 	 * @param a_observer    The observer you wish to remove.
 	 * @return              0 if successful or an error code.
 	 */
-	int remove_observer(int a_observer)
+	int remove_observer(const int a_observer)
     {
         // Check if the observer is not in the map of observers by id. If it's not, exit the function.
         if(!m_observers_by_id.contains(a_observer)) return static_cast<int>(notifly_result::observer_not_found);
 
         // Retrieve the tuple associated with the observer id from the map.
-        auto& [observer_id, iterator] = m_observers_by_id.at(a_observer);
-
         {
+            auto& [observer_id, iterator] = m_observers_by_id.at(a_observer);
             // Lock the mutex to ensure thread safety during the operation.
             std::lock_guard a_lock(m_mutex);
 
@@ -306,7 +298,7 @@ public:
      * @param   a_notification      The name of the notification you wish to remove.
      * @return                      The number of observers that were successfully removed or an error code.
      */
-    int remove_all_observers(int a_notification)
+    int remove_all_observers(const int a_notification)
     {
         // Lock the mutex to ensure thread safety during the operation.
         std::lock_guard a_lock(m_mutex);
@@ -387,7 +379,7 @@ public:
             // The callback function is invoked with 'a_payload' as its argument.
             if(a_async)
             {
-                m_thread_pool.push([=](int id) { return callback.m_callback(payload);});
+                m_pool.push([=]{ return callback.m_callback(payload);});
             }
             // If 'a_async' is false, it directly invokes the callback function with 'a_payload' as its argument.
             else
@@ -397,16 +389,6 @@ public:
         }
         // If the notification is found and the callbacks are successfully invoked, it returns true.
         return static_cast<int>(a_notification_list.size());
-    }
-
-	/**
-     * @brief               This method is used to resize the threads number in the thread-pool
-     * @param   a_threads   The number of threads
-     */
-	void resize_thread_pool(int a_threads)
-    {
-        // Push a lambda function to the thread pool that resizes the thread pool to the specified number of threads.
-        m_thread_pool.push([this, a_threads](int id) { this->m_thread_pool.resize(a_threads); });
     }
 
     /**
@@ -434,21 +416,18 @@ private:
      * @return      A string representation of the type 'T'.
      */
     template <typename T>
-    std::string stringType()
+    std::string stringType() const
     {
-        std::string type_name = std::type_index(typeid(T)).name();
-        if (std::is_lvalue_reference<T>::value)
+        const std::string type_name = std::type_index(typeid(T)).name();
+        if (std::is_lvalue_reference_v<T>)
         {
             return "(Qxt&)" + type_name;
         }
-        else if (std::is_rvalue_reference<T>::value)
+        if (std::is_rvalue_reference_v<T>)
         {
             return "(Qxt&&)" + type_name;
         }
-        else
-        {
-            return "(Qxt)" + type_name;
-        }
+        return "(Qxt)" + type_name;
     }
 
     /** === Private members === **/
@@ -464,7 +443,7 @@ private:
     mutable mutex_t m_mutex;
 
     // 'm_thread_pool' is a member variable that holds a thread pool for asynchronous notifications.
-	tp::thread_pool m_thread_pool;
+	PartyThreads::Pool m_pool;
 
     // 'm_id_manager' is a member variable that holds an id manager for managing unique observer ids.
     id_manager m_id_manager;

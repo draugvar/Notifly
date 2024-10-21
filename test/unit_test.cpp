@@ -163,8 +163,6 @@ TEST(notifly, different_notifly_instances)
 
 TEST(notifly, multi_threads)
 {
-    notifly::default_notifly().resize_thread_pool(100);
-
     auto ret = notifly::default_notifly().add_observer(poster, just_increment_and_print);
 
     // 100 threads will increment the value 10 times

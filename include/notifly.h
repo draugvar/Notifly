@@ -162,8 +162,7 @@ public:
 	/**
      * @brief   Constructor.
      */
-    notifly() : m_pool(20) // Default thread-pool initialization to just 1 thread
-    {}
+    notifly() = default;
 
     /**
      * @brief                   This method adds a function callback as an observer to a named notification.
@@ -196,7 +195,8 @@ public:
 
         if(m_observers.contains(a_notification))
         {
-            if (auto& obs = std::get<0>(m_observers.at(a_notification)).front(); obs.get_types() != types)
+            if (const auto& obs = std::get<0>(m_observers.at(a_notification)).front();
+                obs.get_types() != types)
             {
                 return static_cast<int>(notifly_result::payload_type_not_match);
             }
@@ -212,7 +212,7 @@ public:
         // A lambda function is being defined here. This lambda takes a single argument of type std::any and
         // also returns std::any.
         // The lambda captures 'a_method', which is a function passed from the surrounding scope.
-        auto lambda = [a_method](std::any any) -> std::any
+        auto lambda = [a_method](const std::any& any) -> std::any
         {
             // The input std::any is cast to a std::tuple<Args...>. This assumes that the input std::any contains
             // a std::tuple<Args...>.
@@ -243,7 +243,7 @@ public:
         // of observers.
         // The '--' operator is used to get the iterator to the last element, as 'end()' returns an iterator to
         // one past the last element.
-        auto tuple = std::make_tuple(a_notification, --std::get<0>(m_observers[a_notification]).end());
+        const auto tuple = std::make_tuple(a_notification, --std::get<0>(m_observers[a_notification]).end());
 
         // The tuple is added to the map 'm_observers_by_id' with the observer id as the key.
         m_observers_by_id[id] = tuple;
@@ -307,10 +307,10 @@ public:
         if(!m_observers.contains(a_notification)) return 0;
 
         // Get the list of observers for the given notification.
-        auto observers_by_notification = std::get<0>(m_observers.at(a_notification));
+        const auto observers_by_notification = std::get<0>(m_observers.at(a_notification));
 
         // Get the number of observers for the given notification.
-        auto ret = observers_by_notification.size();
+        const auto ret = observers_by_notification.size();
 
         // Iterate over all observers for the given notification.
         for(const auto& observer: observers_by_notification)
@@ -340,7 +340,7 @@ public:
      * @return                  Number of observers that were successfully notified or an error code.
      */
     template<typename ...Args>
-    int post_notification(int a_notification, Args... args, bool a_async = false)
+    int post_notification(const int a_notification, Args... args, const bool a_async = false)
     {
         // Generate a unique string for the types of Args
         std::string types;
@@ -358,7 +358,7 @@ public:
         {
             return static_cast<int>(notifly_result::notification_not_found);
         }
-        else if (std::get<0>(m_observers[a_notification]).front().get_types() != types)
+        if (std::get<0>(m_observers[a_notification]).front().get_types() != types)
         {
             return static_cast<int>(notifly_result::payload_type_not_match);
         }
@@ -443,7 +443,7 @@ private:
     mutable mutex_t m_mutex;
 
     // 'm_thread_pool' is a member variable that holds a thread pool for asynchronous notifications.
-	PartyThreads::Pool m_pool;
+	PartyThreads::Pool m_pool{20};
 
     // 'm_id_manager' is a member variable that holds an id manager for managing unique observer ids.
     id_manager m_id_manager;

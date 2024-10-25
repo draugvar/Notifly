@@ -37,7 +37,7 @@ class foo
 {
 public:
 	// ReSharper disable once CppMemberFunctionMayBeStatic
-	static unsigned int func(struct point* a_point, int a_value)
+	static unsigned int func(point* a_point, int a_value)
 	{
 		printf("Hello std::bind!\n");
 		a_point->x = 11;
@@ -45,6 +45,8 @@ public:
 		printf("Hello value %d\n", a_value);
 		return 0;
 	}
+private:
+	int foo_value = 0;
 };
 
 enum message
@@ -63,7 +65,7 @@ int sum(int a, int b)
 
 void run_notification()
 {
-	auto lambda = std::function<std::any(int*)>([](int* message) -> std::any
+	auto lambda = std::function([](int* message) -> std::any
 	{
         printf("Received notification %d!\n", (*message)++);
         return 0;
@@ -101,7 +103,7 @@ void run_notification()
 
 	notifly::default_notifly().add_observer(
 		poster,
-		std::function<unsigned int(const std::any&)>([](const std::any&) -> unsigned int
+		std::function([](const std::any&) -> unsigned int
 		{
 			printf("Received notification, but idc of payload...\n");
 			return 0;
@@ -116,7 +118,7 @@ void run_notification()
 
 	notifly::default_notifly().add_observer(
 		third_poster,
-		std::function<unsigned int(const int)>([](const int) -> unsigned int
+		std::function([](const int) -> unsigned int
 		{
 			printf("Received ASYNC notification, but idc of payload...\n");
 			return 0;
@@ -162,18 +164,18 @@ void run_notification()
 
 	notifly::default_notifly().add_observer(
 		second_poster,
-		std::function<unsigned int(const std::any&)>([=](const std::any&) -> unsigned int
+		std::function([=](const std::any&) -> unsigned int
 		{
 			printf("Called!\n");
 			return 0;
 		}));
 
-	struct point a_point { 1, 1 };
+	point a_point { 1, 1 };
 	printf("Point x.value = %d\n", a_point.x);
 	printf("Point y.value = %d\n", a_point.y);
 	notifly::default_notifly().add_observer(
             second_poster,
-            std::function<int()>([capture0 = &a_point]() -> int
+            std::function([capture0 = &a_point]() -> int
             {
                 foo::func(capture0, 1);
                 return 0;

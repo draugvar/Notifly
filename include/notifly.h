@@ -35,8 +35,8 @@
 #include <thread>
 #include <stack>
 #include <set>
-
-#include "PartyThreads.h"
+#include <memory>
+#include <PartyThreads.h>
 
 #define NOTIFLY_VERSION_MAJOR 2
 #define NOTIFLY_VERSION_MINOR 0

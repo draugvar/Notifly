@@ -67,3 +67,4 @@ FetchContent_Declare(
 FetchContent_Populate(partythreads)
 
 include_directories(${partythreads_SOURCE_DIR}/include)
+message(STATUS "Party Threads src dir=${partythreads_SOURCE_DIR}")

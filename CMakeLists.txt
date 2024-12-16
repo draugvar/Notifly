@@ -61,3 +61,5 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(partythreads)
 include_directories(${partythreads_SOURCE_DIR}/include)
+
+target_include_directories(${PROJECT_NAME} PRIVATE ${partythreads_SOURCE_DIR}/include)

@@ -61,3 +61,41 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(partythreads)
 include_directories(${partythreads_SOURCE_DIR}/include)
+
+# Function to copy a file only if it does not exist or is different
+function(move_file source_file destination_dir)
+        # Check if the source file exists
+        if(EXISTS ${source_file})
+                # Get the file name from the source file path
+                get_filename_component(file_name ${source_file} NAME)
+                # Set the destination file path
+                set(destination_file ${destination_dir}/${file_name})
+
+                # Check if the destination file does not exist or if the files are different
+                if(NOT EXISTS ${destination_file})
+                        # Copy the source file to the destination
+                        file(COPY ${source_file} DESTINATION ${destination_dir})
+                        message(STATUS "File ${source_file} copied to ${destination_file}.")
+                else()
+                        # Compute the SHA256 hash of the source and destination files
+                        file(SHA256 ${source_file} SHA256_SOURCE)
+                        file(SHA256 ${destination_file} SHA256_DESTINATION)
+
+                        # Compare the hashes
+                        if(NOT SHA256_SOURCE STREQUAL SHA256_DESTINATION)
+                                # Copy the source file to the destination
+                                file(COPY ${source_file} DESTINATION ${destination_dir})
+                                message(STATUS "File ${source_file} copied to ${destination_file}.")
+                        else()
+                                # Print a message if the files are the same
+                                message(STATUS "File ${source_file} is equal to ${destination_file}. No copy needed.")
+                        endif()
+                endif()
+        else()
+                # Print an error message if the source file does not exist
+                message(FATAL_ERROR "The file ${source_file} does not exist.")
+        endif()
+endfunction()
+
+# Copy the PartyThreads header files to the include directory
+move_file(${partythreads_SOURCE_DIR}/include/partythreads.h ${CMAKE_CURRENT_SOURCE_DIR}/include)

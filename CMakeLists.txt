@@ -44,7 +44,7 @@ set_target_properties(gtest_main PROPERTIES MSVC_RUNTIME_LIBRARY MultiThreaded$<
 # 'UNIT_SOURCE' are source files with tests
 file(GLOB UNIT_SOURCE test/*.cpp test/*.h src/*.cpp include/*.h)
 
-set(UNIT_TEST unit_test)
+set(UNIT_TEST notifly_unit_test)
 add_executable(${UNIT_TEST} ${UNIT_SOURCE})
 target_include_directories(${UNIT_TEST} PRIVATE test/google_test/include)
 target_link_libraries(${UNIT_TEST} PRIVATE
@@ -64,6 +64,6 @@ FetchContent_Declare(
         GIT_REPOSITORY https://github.com/draugvar/PartyThreads.git
         GIT_TAG main
 )
-FetchContent_Populate(partythreads)
+FetchContent_MakeAvailable(partythreads)
 
 include_directories(${partythreads_SOURCE_DIR}/include)

@@ -75,7 +75,7 @@ function(move_file source_file destination_dir)
                 if(NOT EXISTS ${destination_file})
                         # Copy the source file to the destination
                         file(COPY ${source_file} DESTINATION ${destination_dir})
-                        message(STATUS "File ${source_file} copied to ${destination_file}.")
+                        message(STATUS "File ${source_file} copied to ${destination_dir}.")
                 else()
                         # Compute the SHA256 hash of the source and destination files
                         file(SHA256 ${source_file} SHA256_SOURCE)
@@ -85,7 +85,7 @@ function(move_file source_file destination_dir)
                         if(NOT SHA256_SOURCE STREQUAL SHA256_DESTINATION)
                                 # Copy the source file to the destination
                                 file(COPY ${source_file} DESTINATION ${destination_dir})
-                                message(STATUS "File ${source_file} copied to ${destination_file}.")
+                                message(STATUS "File ${source_file} copied to ${destination_dir}.")
                         else()
                                 # Print a message if the files are the same
                                 message(STATUS "File ${source_file} is equal to ${destination_file}. No copy needed.")

@@ -28,11 +28,6 @@ FetchContent_Declare(
 )
 
 FetchContent_MakeAvailable(googletest)
-FetchContent_GetProperties(googletest)
-if (NOT googletest_POPULATED)
-    FetchContent_Populate(googletest)
-    add_subdirectory(${googletest_SOURCE_DIR} ${googletest_BINARY_DIR} EXCLUDE_FROM_ALL)
-endif ()
 
 set_target_properties(gtest PROPERTIES MSVC_RUNTIME_LIBRARY MultiThreaded$<$<CONFIG:Debug>:Debug>)
 set_target_properties(gtest_main PROPERTIES MSVC_RUNTIME_LIBRARY MultiThreaded$<$<CONFIG:Debug>:Debug>)
@@ -65,5 +60,6 @@ FetchContent_Declare(
         GIT_TAG main
 )
 FetchContent_MakeAvailable(partythreads)
-
 include_directories(${partythreads_SOURCE_DIR}/include)
+
+target_include_directories(${PROJECT_NAME} PRIVATE ${partythreads_SOURCE_DIR}/include)

@@ -98,4 +98,4 @@ function(move_file source_file destination_dir)
 endfunction()
 
 # Copy the PartyThreads header files to the include directory
-move_file(${partythreads_SOURCE_DIR}/include/partythreads.h ${CMAKE_CURRENT_SOURCE_DIR}/include)
+move_file(${partythreads_SOURCE_DIR}/include/PartyThreads.h ${CMAKE_CURRENT_SOURCE_DIR}/include)

@@ -38,6 +38,14 @@
 #include <memory>
 #include <PartyThreads.h>
 
+// Windows.h defines min and max as macros, which conflicts with std::min and std::max
+#ifdef min
+#undef min
+#endif
+#ifdef max
+#undef max
+#endif
+
 #define NOTIFLY_VERSION_MAJOR 2
 #define NOTIFLY_VERSION_MINOR 0
 #define NOTIFLY_VERSION_PATCH 0

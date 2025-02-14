@@ -367,3 +367,24 @@ TEST(notifly, post_notification_with_deleted_payload)
     }
     promise.get_future().get();
 }
+
+TEST(notifly, delete_notifly)
+{
+    auto lambda = []() -> int
+    {
+        printf("No params\n");
+        return 0;
+    };
+
+    const auto notifly_ptr = new notifly();
+    notifly_ptr->add_observer(poster, lambda);
+    notifly_ptr->post_notification(poster);
+
+    delete notifly_ptr;
+}
+
+TEST(notifly, delete_no_notification)
+{
+    const auto notifly_ptr = new notifly();
+    delete notifly_ptr;
+}

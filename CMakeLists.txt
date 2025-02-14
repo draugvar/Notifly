@@ -53,15 +53,6 @@ set_target_properties(${UNIT_TEST}
         MSVC_RUNTIME_LIBRARY MultiThreaded$<$<CONFIG:Debug>:Debug>
         )
 
-# PartyThreads
-FetchContent_Declare(
-        partythreads
-        GIT_REPOSITORY https://github.com/draugvar/PartyThreads.git
-        GIT_TAG main
-)
-FetchContent_MakeAvailable(partythreads)
-include_directories(${partythreads_SOURCE_DIR}/include)
-
 # Function to copy a file only if it does not exist or is different
 function(move_file source_file destination_dir)
         # Check if the source file exists
@@ -96,6 +87,3 @@ function(move_file source_file destination_dir)
                 message(FATAL_ERROR "The file ${source_file} does not exist.")
         endif()
 endfunction()
-
-# Copy the PartyThreads header files to the include directory
-move_file(${partythreads_SOURCE_DIR}/include/PartyThreads.h ${CMAKE_CURRENT_SOURCE_DIR}/include)

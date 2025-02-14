@@ -36,7 +36,7 @@
 #include <stack>
 #include <set>
 #include <memory>
-#include <PartyThreads.h>
+
 
 // Windows.h defines min and max as macros, which conflicts with std::min and std::max
 #ifdef min
@@ -383,11 +383,14 @@ public:
         // It then iterates over each observer in the list.
         for (const auto& callback : a_notification_list)
         {
-            // If 'a_async' is true, it pushes the callback function to the thread pool for asynchronous execution.
+            // If 'a_async' is true, it pushes the callback function to a jthread for asynchronous execution.
             // The callback function is invoked with 'a_payload' as its argument.
             if(a_async)
             {
-                m_pool.push([=]{ return callback.m_callback(payload);});
+                std::jthread([callback, payload]
+                {
+                    callback.m_callback(payload);
+                }).detach();
             }
             // If 'a_async' is false, it directly invokes the callback function with 'a_payload' as its argument.
             else
@@ -449,9 +452,6 @@ private:
     // 'm_mutex' is a member variable that holds a mutex for thread safety.
 	typedef std::recursive_mutex mutex_t;
     mutable mutex_t m_mutex;
-
-    // 'm_thread_pool' is a member variable that holds a thread pool for asynchronous notifications.
-	PartyThreads::Pool m_pool{20};
 
     // 'm_id_manager' is a member variable that holds an id manager for managing unique observer ids.
     id_manager m_id_manager;

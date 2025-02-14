@@ -2,6 +2,7 @@
 // Created by Salvatore Rivieccio
 //
 #include <gtest/gtest.h>
+#include <future>
 
 #include "notifly.h"
 #include "unit_test.h"

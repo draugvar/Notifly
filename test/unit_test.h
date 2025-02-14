@@ -3,8 +3,6 @@
 //
 #pragma once
 
-#include <iostream>
-
 typedef struct point_
 {
     int x, y;
@@ -18,25 +16,25 @@ enum message
     fourth_poster
 };
 
-int sum_callback(int a, int b)
+inline int sum_callback(int a, int b)
 {
     printf("Sum is %d\n", a + b);
     return a + b;
 }
 
-float divide_callback(int a, int b)
+inline float divide_callback(int a, int b)
 {
     printf("Division is %f\n", (float)a / (float)b);
     return (float)a / (float)b;
 }
 
-int print_struct(point* a_point)
+inline int print_struct(point* a_point)
 {
     printf("Point x: %d, y: %d\n", a_point->x, a_point->y);
     return 0;
 }
 
-int critical_section(std::condition_variable* a_cv, std::mutex* a_mutex, const bool* a_ready, bool* a_notify)
+inline int critical_section(std::condition_variable* a_cv, std::mutex* a_mutex, const bool* a_ready, bool* a_notify)
 {
     if(a_cv == nullptr || a_mutex == nullptr || a_notify == nullptr)
     {
@@ -51,7 +49,7 @@ int critical_section(std::condition_variable* a_cv, std::mutex* a_mutex, const b
     return 0;
 }
 
-int just_increment_and_print(std::atomic_int* a_value)
+inline int just_increment_and_print(std::atomic_int* a_value)
 {
     if(a_value == nullptr)
     {
@@ -61,20 +59,20 @@ int just_increment_and_print(std::atomic_int* a_value)
     // increment 10 times
     for(int i = 0; i < 10; i++)
     {
-        auto n = a_value->fetch_add(1);
+        const auto n = a_value->fetch_add(1);
         printf("Value is %d\n", n);
     }
 
     return 0;
 }
 
-int no_params()
+inline int no_params()
 {
     printf("No params\n");
     return 0;
 }
 
-void void_no_params()
+inline void void_no_params()
 {
     printf("No params\n");
 }

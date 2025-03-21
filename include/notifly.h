@@ -387,7 +387,11 @@ public:
             // The callback function is invoked with 'a_payload' as its argument.
             if(a_async)
             {
+#ifdef __APPLE__
+                std::thread([callback, payload]
+#else
                 std::jthread([callback, payload]
+#endif
                 {
                     callback.m_callback(payload);
                 }).detach();

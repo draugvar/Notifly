@@ -34,8 +34,6 @@
 #include <typeindex>
 #include <thread>
 #include <stack>
-#include <set>
-#include <memory>
 
 // Windows.h defines min and max as macros, which conflicts with std::min and std::max
 #ifdef min
@@ -72,7 +70,7 @@ public:
     /**
      * @brief   Constructor. This constructor initializes the observer with a unique identifier.
      */
-    explicit notification_observer(int a_id, int a_notification, std::string a_types) :
+    explicit notification_observer(const int a_id, const int a_notification, std::string a_types) :
             m_callback(nullptr),
             m_id(a_id),
             m_types(std::move(a_types)),
@@ -130,10 +128,10 @@ public:
      * @return                  The observer id > 0 if successful or an error code
      */
     template<typename Return, typename ...Args>
-    int add_observer(int a_notification, std::function<Return(Args ...)> a_method)
+    int add_observer(const int a_notification, std::function<Return(Args ...)> a_method)
     {
         // Generate a unique string for the types signature
-        std::string types = generate_type_signature<Args...>();
+        const std::string types = generate_type_signature<Args...>();
 
         // Lock for thread safety
         std::lock_guard lock(m_mutex);
@@ -141,8 +139,8 @@ public:
         // Check for type compatibility if notification already exists
         if(m_observers.contains(a_notification))
         {
-            const auto& observer_list = m_observers.at(a_notification).observers;
-            if (!observer_list.empty() && observer_list.front().get_types() != types)
+            if (const auto& observer_list = m_observers.at(a_notification).observers;
+                !observer_list.empty() && observer_list.front().get_types() != types)
             {
                 return static_cast<int>(notifly_result::payload_type_not_match);
             }
@@ -172,13 +170,14 @@ public:
         };
 
         // Add observer to appropriate lists
-        auto& notification_data = m_observers[a_notification];
-        notification_data.observers.push_back(observer);
-        
+        auto&[observers] = m_observers[a_notification];
+        observers.push_back(observer);
+
         // Store reference to the observer for quick lookup by ID
-        m_observer_lookup[id] = {
-            a_notification, 
-            --notification_data.observers.end()
+        m_observer_lookup[id] =
+        {
+            a_notification,
+            --observers.end()
         };
 
         return id;
@@ -192,9 +191,9 @@ public:
     int remove_observer(const int a_observer)
     {
         std::lock_guard lock(m_mutex);
-        
+
         // Check if observer exists
-        if(!m_observer_lookup.contains(a_observer)) 
+        if(!m_observer_lookup.contains(a_observer))
             return static_cast<int>(notifly_result::observer_not_found);
 
         // Get observer info and remove it
@@ -204,7 +203,7 @@ public:
         {
             // Remove the observer from its list
             it->second.observers.erase(observer_iter);
-            
+
             // If notification has no more observers, remove it completely
             if(it->second.observers.empty())
             {
@@ -229,7 +228,7 @@ public:
         std::lock_guard lock(m_mutex);
 
         const auto it = m_observers.find(a_notification);
-        if(it == m_observers.end()) 
+        if(it == m_observers.end())
             return 0;
 
         // Get number of observers for return value
@@ -260,27 +259,32 @@ public:
     {
         // Generate type signature for validation
         std::string types = generate_type_signature<Args...>();
-        
+
         // Create payload tuple
         auto payload = std::make_any<std::tuple<Args...>>(std::make_tuple(args...));
-        
+
         // Check notification and type compatibility
         std::lock_guard lock(m_mutex);
-        
+
         auto it = m_observers.find(a_notification);
         if(it == m_observers.end())
             return static_cast<int>(notifly_result::notification_not_found);
-            
+
         const auto& observer_list = it->second.observers;
         if(observer_list.empty() || observer_list.front().get_types() != types)
             return static_cast<int>(notifly_result::payload_type_not_match);
-            
+
         // Notify all observers
         for(const auto& observer : observer_list)
         {
             if(a_async)
             {
-                std::thread([callback = observer.m_callback, p = payload]() {
+#ifdef __APPLE__
+                std::thread([callback = observer.m_callback, p = payload]
+#else
+                std::jthread([callback = observer.m_callback, p = payload]
+#endif
+                {
                     callback(p);
                 }).detach();
             }
@@ -289,7 +293,7 @@ public:
                 observer.m_callback(payload);
             }
         }
-        
+
         return static_cast<int>(observer_list.size());
     }
 
@@ -307,7 +311,7 @@ private:
     struct NotificationData {
         std::list<notification_observer> observers;
     };
-    
+
     // Structure to store observer location info for quick lookup
     struct ObserverLocation {
         int notification_id{};
@@ -322,7 +326,7 @@ private:
         (void)std::initializer_list<int>{(signature += get_type_string<Args>(), 0)...};
         return signature;
     }
-    
+
     // Get string representation of a type
     template <typename T>
     std::string get_type_string() const
@@ -334,7 +338,7 @@ private:
             return "rval:" + name;
         return "val:" + name;
     }
-    
+
     // ID management methods
     int get_unique_id()
     {
@@ -349,8 +353,8 @@ private:
 
         return m_next_id++;
     }
-    
-    void release_id(int id)
+
+    void release_id(const int id)
     {
         m_released_ids.push(id);
     }
@@ -358,14 +362,15 @@ private:
     // Data members
     std::unordered_map<int, NotificationData> m_observers;
     std::unordered_map<int, ObserverLocation> m_observer_lookup;
-    
+
     // ID management
     std::stack<int> m_released_ids;
     int m_next_id = 1;
-    
+
     // Thread safety
     mutable std::mutex m_mutex;
-    
+
     // Default notification center instance
     static std::shared_ptr<notifly> m_default_center;
 };
+

@@ -28,7 +28,7 @@ TEST(notifly, add_observer_struct)
 {
     const auto i1 = notifly::default_notifly().add_observer(poster, print_struct);
 
-    const point a_point = {0, 0};
+    constexpr point a_point = {0, 0};
     // We are passing a struct by value when we should pass it by reference as the observer is expecting a pointer,
     // so it will fail.
     const auto ret = notifly::default_notifly().post_notification<point>(poster, a_point);
@@ -54,7 +54,7 @@ TEST(notifly, struct_add_observer_and_post_message)
 
 TEST(notifly, lambda_and_post_message)
 {
-    const auto lambda = std::function<int(int, int)>([](int a, int b) -> int
+    const auto lambda = std::function([](const int a, const int b) -> int
     {
         printf("Sum is %d\n", a + b);
         return a + b;
@@ -70,7 +70,7 @@ TEST(notifly, lambda_and_post_message)
 
 TEST(notifly, nothing_to_lambda)
 {
-    const auto lambda = std::function<std::any()>([]() -> std::any
+    const auto lambda = std::function([]() -> std::any
     {
         printf("No payload!\n");
         return 1;

@@ -263,14 +263,53 @@ public:
     }
 
     /**
-     * @brief                   Post a notification to observers.
+     * @brief                   Post a notification to observers synchronously.
      * @param a_notification    The notification you wish to post.
      * @param args              The payload associated with the notification.
-     * @param a_async           If true, runs callbacks in separate threads.
      * @return                  Number of observers notified or an error code.
      */
     template<typename ...Args>
-    int post_notification(auto a_notification, Args... args, const bool a_async = false)
+    int post_notification(auto a_notification, Args... args)
+    {
+        return post_notification_impl(a_notification, false, std::forward<Args>(args)...);
+    }
+
+    /**
+     * @brief                   Post a notification to observers asynchronously.
+     * @param a_notification    The notification you wish to post.
+     * @param args              The payload associated with the notification.
+     * @return                  Number of observers notified or an error code.
+     */
+    template<typename ...Args>
+    int post_notification_async(auto a_notification, Args... args)
+    {
+        return post_notification_impl(a_notification, true, std::forward<Args>(args)...);
+    }
+
+    /**
+     * @brief   Get the default global notification center.
+     */
+    static notifly& default_notifly()
+    {
+        static notifly instance;
+        return instance;
+    }
+
+private:
+    // Structure to group observer data for a notification
+    struct NotificationData {
+        std::list<notification_observer> observers;
+    };
+
+    // Structure to store observer location info for quick lookup
+    struct ObserverLocation {
+        int notification_id{};
+        std::list<notification_observer>::iterator iterator;
+    };
+
+    // Helper method to post a notification
+    template<typename ...Args>
+    int post_notification_impl(auto a_notification, const bool a_async, Args... args)
     {
         // Generate type signature for validation
         std::string types = generate_type_signature<Args...>();
@@ -301,7 +340,7 @@ public:
 #endif
                     callback(p);
                 });
-                
+
                 // Store the thread
                 std::lock_guard task_lock(m_tasks_mutex);
                 m_async_tasks[observer.get_id()].push_back(task_thread);
@@ -311,49 +350,8 @@ public:
                 observer.m_callback(payload);
             }
         }
-
         return static_cast<int>(observer_list.size());
     }
-
-    /**
-     * @brief   Wait for all pending async tasks to complete
-     */
-    void wait_for_all_async_tasks()
-    {
-        std::lock_guard lock(m_tasks_mutex);
-        for (auto& [observer_id, tasks] : m_async_tasks)
-        {
-            for (const auto& task : tasks)
-            {
-#ifdef __APPLE__
-                if (task && task->joinable())
-                    task->join();
-#endif
-            }
-        }
-        m_async_tasks.clear();
-    }
-
-    /**
-     * @brief   Get the default global notification center.
-     */
-    static notifly& default_notifly()
-    {
-        static notifly instance;
-        return instance;
-    }
-
-private:
-    // Structure to group observer data for a notification
-    struct NotificationData {
-        std::list<notification_observer> observers;
-    };
-
-    // Structure to store observer location info for quick lookup
-    struct ObserverLocation {
-        int notification_id{};
-        std::list<notification_observer>::iterator iterator;
-    };
 
     // Helper method to wait for async tasks related to a specific observer
     void wait_for_observer_tasks(const int observer_id)
@@ -391,6 +389,23 @@ private:
         {
             wait_for_observer_tasks(observer_id);
         }
+    }
+
+    // Wait for all pending async tasks to complete
+    void wait_for_all_async_tasks()
+    {
+        std::lock_guard lock(m_tasks_mutex);
+        for (auto& [observer_id, tasks] : m_async_tasks)
+        {
+            for (const auto& task : tasks)
+            {
+#ifdef __APPLE__
+                if (task && task->joinable())
+                    task->join();
+#endif
+            }
+        }
+        m_async_tasks.clear();
     }
 
     // Helper method to generate type signature

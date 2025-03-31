@@ -34,6 +34,7 @@
 #include <typeindex>
 #include <thread>
 #include <stack>
+#include <memory>
 
 // Windows.h defines min and max as macros, which conflicts with std::min and std::max
 #ifdef min

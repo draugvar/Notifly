@@ -466,7 +466,7 @@ private:
     int m_next_id = 1;
 
     // Thread safety
-    mutable std::mutex m_mutex;
+    mutable std::recursive_mutex m_mutex;
 
     // Default notification center instance
     static std::shared_ptr<notifly> m_default_center;

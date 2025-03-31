@@ -1,11 +1,13 @@
 name: Build and Test
 
-# This workflow is triggered when a pull request is created or updated on the main branch or if manually triggered
 on:
   pull_request:
     branches:
       - main
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build:
@@ -13,10 +15,18 @@ jobs:
     strategy:
       matrix:
         os: [ubuntu-latest, windows-latest]
+        build_type: [Release]
+        include:
+          - os: ubuntu-latest
+            cc: gcc
+            cxx: g++
+          - os: windows-latest
+            cc: cl
+            cxx: cl
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@main
+        uses: actions/checkout@v4
 
       - name: Setup CMake
         uses: jwlawson/actions-setup-cmake@master
@@ -27,12 +37,14 @@ jobs:
       - name: Build
         run: cmake --build build --config Release
 
-      - name: Test
+      - name: Test on Linux
+        if: runner.os == 'Linux'
         working-directory: build
         shell: bash
-        run: |
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            ./Release/notifly_unit_test.exe
-          else
-            ./notifly_unit_test
-          fi
+        run: ./notifly_unit_test
+
+      - name: Test on Windows
+        if: runner.os == 'Windows'
+        working-directory: build
+        shell: pwsh
+        run: .\Release\notifly_unit_test.exe

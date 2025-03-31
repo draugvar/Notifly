@@ -18,7 +18,7 @@ TEST(notifly, func_add_observer)
 {
     const auto i1 = notifly::default_notifly().add_observer(poster, sum_callback);
 
-    const auto ret = notifly::default_notifly().post_notification(poster, 5, 10);
+    const auto ret = notifly::default_notifly().post_notification<int, long>(poster, 5, 10);
 
     notifly::default_notifly().remove_observer(i1);
     ASSERT_EQ(ret, static_cast<int>(notifly_result::payload_type_not_match));

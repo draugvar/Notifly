@@ -35,6 +35,8 @@
 #include <thread>
 #include <stack>
 #include <memory>
+#include <vector>
+#include <future>
 
 // Windows.h defines min and max as macros, which conflicts with std::min and std::max
 #ifdef min
@@ -75,8 +77,7 @@ public:
             m_callback(nullptr),
             m_id(a_id),
             m_types(std::move(a_types)),
-            m_notification(a_notification),
-            is_active(false)
+            m_notification(a_notification)
     {}
 
     /**
@@ -96,7 +97,6 @@ private:
     int m_id;
     std::string m_types;
     int m_notification;
-    bool is_active;
 };
 
 /**
@@ -109,6 +109,14 @@ public:
      * @brief   Constructor.
      */
     notifly() = default;
+
+    /**
+     * @brief   Destructor. Makes sure all async tasks are completed.
+     */
+    ~notifly()
+    {
+        wait_for_all_async_tasks();
+    }
 
     /**
      * @brief                   This method adds a function callback as an observer to a named notification.
@@ -197,6 +205,9 @@ public:
         if(!m_observer_lookup.contains(a_observer))
             return static_cast<int>(notifly_result::observer_not_found);
 
+        // Wait for any async tasks related to this observer to complete
+        wait_for_observer_tasks(a_observer);
+
         // Get observer info and remove it
         const auto& [notification_id, observer_iter] = m_observer_lookup[a_observer];
 
@@ -234,6 +245,9 @@ public:
 
         // Get number of observers for return value
         const auto count = it->second.observers.size();
+
+        // Wait for any async tasks related to this notification to complete
+        wait_for_notification_tasks(a_notification);
 
         // Release all observer IDs
         for(const auto& observer: it->second.observers)
@@ -281,13 +295,16 @@ public:
             if(a_async)
             {
 #ifdef __APPLE__
-                std::thread([callback = observer.m_callback, p = payload]
+                auto task_thread = std::make_shared<std::thread>([callback = observer.m_callback, p = payload]() mutable {
 #else
-                std::jthread([callback = observer.m_callback, p = payload]
+                auto task_thread = std::make_shared<std::jthread>([callback = observer.m_callback, p = payload]() {
 #endif
-                {
                     callback(p);
-                }).detach();
+                });
+                
+                // Store the thread
+                std::lock_guard task_lock(m_tasks_mutex);
+                m_async_tasks[observer.get_id()].push_back(task_thread);
             }
             else
             {
@@ -296,6 +313,25 @@ public:
         }
 
         return static_cast<int>(observer_list.size());
+    }
+
+    /**
+     * @brief   Wait for all pending async tasks to complete
+     */
+    void wait_for_all_async_tasks()
+    {
+        std::lock_guard lock(m_tasks_mutex);
+        for (auto& [observer_id, tasks] : m_async_tasks)
+        {
+            for (const auto& task : tasks)
+            {
+#ifdef __APPLE__
+                if (task && task->joinable())
+                    task->join();
+#endif
+            }
+        }
+        m_async_tasks.clear();
     }
 
     /**
@@ -318,6 +354,44 @@ private:
         int notification_id{};
         std::list<notification_observer>::iterator iterator;
     };
+
+    // Helper method to wait for async tasks related to a specific observer
+    void wait_for_observer_tasks(const int observer_id)
+    {
+        std::lock_guard task_lock(m_tasks_mutex);
+        if (const auto it = m_async_tasks.find(observer_id); it != m_async_tasks.end())
+        {
+            for (const auto& task : it->second)
+            {
+#ifdef __APPLE__
+                if (task && task->joinable())
+                    task->join();
+#endif
+            }
+            m_async_tasks.erase(it);
+        }
+    }
+
+    // Helper method to wait for async tasks related to a specific notification
+    void wait_for_notification_tasks(const int notification_id)
+    {
+        std::vector<int> observer_ids_to_wait;
+        
+        // First gather all observer IDs for this notification
+        for (const auto& [id, location] : m_observer_lookup)
+        {
+            if (location.notification_id == notification_id)
+            {
+                observer_ids_to_wait.push_back(id);
+            }
+        }
+        
+        // Now wait for each observer's tasks
+        for (const int observer_id : observer_ids_to_wait)
+        {
+            wait_for_observer_tasks(observer_id);
+        }
+    }
 
     // Helper method to generate type signature
     template <typename... Args>
@@ -363,6 +437,14 @@ private:
     // Data members
     std::unordered_map<int, NotificationData> m_observers;
     std::unordered_map<int, ObserverLocation> m_observer_lookup;
+
+    // Async tasks management
+#ifdef __APPLE__
+    std::unordered_map<int, std::vector<std::shared_ptr<std::thread>>> m_async_tasks;
+#else
+    std::unordered_map<int, std::vector<std::shared_ptr<std::jthread>>> m_async_tasks;
+#endif
+    mutable std::mutex m_tasks_mutex;
 
     // ID management
     std::stack<int> m_released_ids;

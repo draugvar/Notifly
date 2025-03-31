@@ -18,7 +18,8 @@ enum message
 
 inline int sum_callback(const int a, const int b)
 {
-    printf("Sum is %d\n", a + b);
+    static uint8_t counter = 0;
+    printf("[%d] Sum is %d\n", counter++, a + b);
     return a + b;
 }
 

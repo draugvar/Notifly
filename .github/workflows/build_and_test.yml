@@ -34,5 +34,5 @@ jobs:
           if [[ "${{ runner.os }}" == "Windows" ]]; then
             ./Release/unit_test.exe
           else
-            ./unit_test
+            ./notifly_unit_test
           fi

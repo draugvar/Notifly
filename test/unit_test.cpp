@@ -18,7 +18,7 @@ TEST(notifly, func_add_observer)
 {
     const auto i1 = notifly::default_notifly().add_observer(poster, sum_callback);
 
-    const auto ret = notifly::default_notifly().post_notification<int, long>(poster, 5, 10);
+    const auto ret = notifly::default_notifly().post_notification(poster, 5, 10);
 
     notifly::default_notifly().remove_observer(i1);
     ASSERT_EQ(ret, static_cast<int>(notifly_result::payload_type_not_match));
@@ -70,13 +70,11 @@ TEST(notifly, lambda_and_post_message)
 
 TEST(notifly, nothing_to_lambda)
 {
-    const auto lambda = std::function([]() -> std::any
+    const auto i1 = notifly::default_notifly().add_observer(poster, []
     {
         printf("No payload!\n");
         return 1;
     });
-
-    const auto i1 = notifly::default_notifly().add_observer(poster, lambda);
 
     const auto ret = notifly::default_notifly().post_notification(poster);
     notifly::default_notifly().remove_observer(i1);
@@ -95,7 +93,7 @@ TEST(notifly, add_different_observers)
     const auto i1 = notifly::default_notifly().add_observer(poster, sum_callback);
     auto i2 = notifly::default_notifly().add_observer(poster, print_struct);
 
-    const auto ret1 = notifly::default_notifly().post_notification<int, int>(poster, (int)i1, (int)i2);
+    const auto ret1 = notifly::default_notifly().post_notification<int, int>(poster, i1, i2);
     const auto ret2 = notifly::default_notifly().post_notification<int*>(poster, &i2);
 
     notifly::default_notifly().remove_observer(i1);
@@ -116,25 +114,25 @@ TEST(notifly, critical_section)
     const auto i1 = notifly::default_notifly().add_observer(poster, critical_section);
 
     const auto ret = notifly::default_notifly().post_notification<std::condition_variable*, std::mutex*, const bool*, bool*>
-            (
-                    poster,
-                    &cv,
-                    &mutex,
-                    &ready,
-                    &notify,
-                    true
-            );
+    (
+            poster,
+            &cv,
+            &mutex,
+            &ready,
+            &notify,
+            true
+    );
 
     // Notify the observer that it can proceed
     {
-        std::unique_lock<std::mutex> lock(mutex);
+        std::unique_lock lock(mutex);
         ready = true;
     }
     cv.notify_one();
 
     // Wait for the observer to finish
     {
-        std::unique_lock<std::mutex> lock(mutex);
+        std::unique_lock lock(mutex);
         cv.wait(lock, [&notify] { return notify; });
     }
 
@@ -149,8 +147,8 @@ TEST(notifly, different_notifly_instances)
     notifly another_notifly;
     const auto i2 = another_notifly.add_observer(poster, sum_callback);
 
-    const auto ret1 = notifly::default_notifly().post_notification<int, int>(poster, (int) i1, (int) i2, true);
-    const auto ret2 = another_notifly.post_notification<int, int>(poster, (int) i1, (int) i2);
+    const auto ret1 = notifly::default_notifly().post_notification<int, int>(poster, i1, i2, true);
+    const auto ret2 = another_notifly.post_notification<int, int>(poster, i1, i2);
 
     notifly::default_notifly().remove_observer(i1);
     another_notifly.remove_observer(i2);
@@ -223,7 +221,7 @@ TEST(notifly, remove_id_not_found)
 
 TEST(notifly, test_wrong_reference)
 {
-    const auto lambda = std::function<int(int&)>([](int& a) -> int
+    const auto lambda = std::function([](int& a) -> int
     {
         printf("The reference is %d\n", a);
         return 0;

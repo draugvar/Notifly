@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           if [[ "${{ runner.os }}" == "Windows" ]]; then
-            ./Release/unit_test.exe
+            ./Release/notifly_unit_test.exe
           else
             ./notifly_unit_test
           fi

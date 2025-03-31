@@ -44,7 +44,7 @@ TEST(notifly, struct_add_observer_and_post_message)
     p.x = 10;
     p.y = 20;
 
-    const auto ret = notifly::default_notifly().post_notification<point*>(poster, &p, true);
+    const auto ret = notifly::default_notifly().post_notification<const point*>(poster, &p, true);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(250));
 

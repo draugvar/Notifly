@@ -16,19 +16,19 @@ enum message
     fourth_poster
 };
 
-inline int sum_callback(int a, int b)
+inline int sum_callback(const int a, const int b)
 {
     printf("Sum is %d\n", a + b);
     return a + b;
 }
 
-inline float divide_callback(int a, int b)
+inline float divide_callback(const int a, const int b)
 {
-    printf("Division is %f\n", (float)a / (float)b);
-    return (float)a / (float)b;
+    printf("Division is %f\n", static_cast<float>(a) / static_cast<float>(b));
+    return static_cast<float>(a) / static_cast<float>(b);
 }
 
-inline int print_struct(point* a_point)
+inline int print_struct(const point* a_point)
 {
     printf("Point x: %d, y: %d\n", a_point->x, a_point->y);
     return 0;

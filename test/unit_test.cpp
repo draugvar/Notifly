@@ -18,7 +18,7 @@ TEST(notifly, func_add_observer)
 {
     const auto i1 = notifly::default_notifly().add_observer(poster, sum_callback);
 
-    const auto ret = notifly::default_notifly().post_notification<int, long>(poster, 5, 10);
+    const auto ret = notifly::default_notifly().post_notification(poster, 5, 0x100000000);
 
     notifly::default_notifly().remove_observer(i1);
     ASSERT_EQ(ret, static_cast<int>(notifly_result::payload_type_not_match));
@@ -28,10 +28,10 @@ TEST(notifly, add_observer_struct)
 {
     const auto i1 = notifly::default_notifly().add_observer(poster, print_struct);
 
-    const point a_point = {0, 0};
+    constexpr point a_point = {0, 0};
     // We are passing a struct by value when we should pass it by reference as the observer is expecting a pointer,
     // so it will fail.
-    const auto ret = notifly::default_notifly().post_notification<point>(poster, a_point);
+    const auto ret = notifly::default_notifly().post_notification(poster, a_point);
     notifly::default_notifly().remove_observer(i1);
     ASSERT_EQ(ret, static_cast<int>(notifly_result::payload_type_not_match));
 }
@@ -40,11 +40,9 @@ TEST(notifly, struct_add_observer_and_post_message)
 {
     const auto i1 = notifly::default_notifly().add_observer(poster, print_struct);
 
-    point p = {0, 0};
-    p.x = 10;
-    p.y = 20;
+    constexpr point p = {10, 20};
 
-    const auto ret = notifly::default_notifly().post_notification<point*>(poster, &p, true);
+    const auto ret = notifly::default_notifly().post_notification_async(poster, &p);
 
     std::this_thread::sleep_for(std::chrono::milliseconds(250));
 
@@ -54,7 +52,7 @@ TEST(notifly, struct_add_observer_and_post_message)
 
 TEST(notifly, lambda_and_post_message)
 {
-    const auto lambda = std::function<int(int, int)>([](int a, int b) -> int
+    const auto lambda = std::function([](const int a, const int b) -> int
     {
         printf("Sum is %d\n", a + b);
         return a + b;
@@ -62,7 +60,7 @@ TEST(notifly, lambda_and_post_message)
 
     const auto i1 = notifly::default_notifly().add_observer(poster, lambda);
 
-    const auto ret = notifly::default_notifly().post_notification<int, int>(poster, 5, 10);
+    const auto ret = notifly::default_notifly().post_notification(poster, 5, 10);
 
     notifly::default_notifly().remove_observer(i1);
     ASSERT_GE(ret, 0);
@@ -70,13 +68,11 @@ TEST(notifly, lambda_and_post_message)
 
 TEST(notifly, nothing_to_lambda)
 {
-    const auto lambda = std::function<std::any()>([]() -> std::any
+    const auto i1 = notifly::default_notifly().add_observer(poster, []
     {
         printf("No payload!\n");
         return 1;
     });
-
-    const auto i1 = notifly::default_notifly().add_observer(poster, lambda);
 
     const auto ret = notifly::default_notifly().post_notification(poster);
     notifly::default_notifly().remove_observer(i1);
@@ -86,7 +82,7 @@ TEST(notifly, nothing_to_lambda)
 
 TEST(notifly, int_to_nothing)
 {
-    const auto ret = notifly::default_notifly().post_notification<int>(poster, 5);
+    const auto ret = notifly::default_notifly().post_notification(poster, 5);
     ASSERT_EQ(ret, static_cast<int>(notifly_result::notification_not_found));
 }
 
@@ -95,8 +91,8 @@ TEST(notifly, add_different_observers)
     const auto i1 = notifly::default_notifly().add_observer(poster, sum_callback);
     auto i2 = notifly::default_notifly().add_observer(poster, print_struct);
 
-    const auto ret1 = notifly::default_notifly().post_notification<int, int>(poster, (int)i1, (int)i2);
-    const auto ret2 = notifly::default_notifly().post_notification<int*>(poster, &i2);
+    const auto ret1 = notifly::default_notifly().post_notification(poster, i1, i2);
+    const auto ret2 = notifly::default_notifly().post_notification(poster, &i2);
 
     notifly::default_notifly().remove_observer(i1);
     notifly::default_notifly().remove_observer(i2);
@@ -111,36 +107,35 @@ TEST(notifly, critical_section)
     std::mutex mutex;
     std::condition_variable cv;
     bool ready = false;
-    bool notify = false;
 
     const auto i1 = notifly::default_notifly().add_observer(poster, critical_section);
 
-    const auto ret = notifly::default_notifly().post_notification<std::condition_variable*, std::mutex*, const bool*, bool*>
-            (
-                    poster,
-                    &cv,
-                    &mutex,
-                    &ready,
-                    &notify,
-                    true
-            );
+    const auto ret = notifly::default_notifly().post_notification_async
+    (
+            poster,
+            &cv,
+            &mutex,
+            &ready
+    );
+
+    ASSERT_GE(ret, 0);
 
     // Notify the observer that it can proceed
     {
-        std::unique_lock<std::mutex> lock(mutex);
+        std::unique_lock lock(mutex);
         ready = true;
     }
     cv.notify_one();
 
     // Wait for the observer to finish
     {
-        std::unique_lock<std::mutex> lock(mutex);
-        cv.wait(lock, [&notify] { return notify; });
+        std::unique_lock lock(mutex);
+        cv.wait(lock, [&ready] { return !ready; });
     }
 
     notifly::default_notifly().remove_observer(i1);
     ASSERT_GE(ret, 0);
-    ASSERT_EQ(notify, true);
+    ASSERT_EQ(ready, false);
 }
 
 TEST(notifly, different_notifly_instances)
@@ -149,8 +144,8 @@ TEST(notifly, different_notifly_instances)
     notifly another_notifly;
     const auto i2 = another_notifly.add_observer(poster, sum_callback);
 
-    const auto ret1 = notifly::default_notifly().post_notification<int, int>(poster, (int) i1, (int) i2, true);
-    const auto ret2 = another_notifly.post_notification<int, int>(poster, (int) i1, (int) i2);
+    const auto ret1 = notifly::default_notifly().post_notification_async(poster, i1, i2);
+    const auto ret2 = another_notifly.post_notification(poster, i1, i2);
 
     notifly::default_notifly().remove_observer(i1);
     another_notifly.remove_observer(i2);
@@ -169,11 +164,11 @@ TEST(notifly, multi_threads)
     std::atomic_int a_value = 0;
     for(int i = 0; i < 100; i++)
     {
-        notifly::default_notifly().post_notification<std::atomic_int*>(poster, &a_value, true);
+        notifly::default_notifly().post_notification_async(poster, &a_value);
     }
     while(a_value < 1000)
     {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        std::this_thread::yield();
     }
 
     notifly::default_notifly().remove_observer(ret);
@@ -211,7 +206,7 @@ TEST(notifly, remove_id_not_found)
     const auto id_1 = notifly::default_notifly().add_observer(poster, sum_callback);
     const auto id_2 = notifly::default_notifly().add_observer(poster, divide_callback);
 
-    const auto ret = notifly::default_notifly().post_notification<int, int>(poster, 5, 3);
+    const auto ret = notifly::default_notifly().post_notification(poster, 5, 3);
 
     notifly::default_notifly().remove_observer(id_1);
     notifly::default_notifly().remove_observer(id_2);
@@ -223,14 +218,14 @@ TEST(notifly, remove_id_not_found)
 
 TEST(notifly, test_wrong_reference)
 {
-    const auto lambda = std::function<int(int&)>([](int& a) -> int
+    const auto lambda = std::function([](const int& a) -> int
     {
         printf("The reference is %d\n", a);
         return 0;
     });
     const auto id_1 = notifly::default_notifly().add_observer(poster, lambda);
 
-    const auto ret = notifly::default_notifly().post_notification<int>(poster, 5);
+    const auto ret = notifly::default_notifly().post_notification(poster, 5);
 
     notifly::default_notifly().remove_observer(id_1);
 
@@ -248,8 +243,8 @@ TEST(notifly, multiple_observers)
         observers.push_back(id);
     }
 
-    const auto ret_sync = notifly::default_notifly().post_notification<int, int>(poster, 9, 9);
-    const auto ret_async = notifly::default_notifly().post_notification<int, int>(poster, 9, 9, true);
+    const auto ret_sync = notifly::default_notifly().post_notification(poster, 9, 9);
+    const auto ret_async = notifly::default_notifly().post_notification_async(poster, 9, 9);
     for(const auto& observer: observers)
     {
         notifly::default_notifly().remove_observer(observer);
@@ -363,7 +358,7 @@ TEST(notifly, post_notification_with_deleted_payload)
     }
     {
         constexpr int a = 10;
-        const auto ret = notifly::default_notifly().post_notification<const int*>(poster, &a, true);
+        const auto ret = notifly::default_notifly().post_notification_async(poster, &a);
         ASSERT_GE(ret, 0);  
     }
     promise.get_future().get();

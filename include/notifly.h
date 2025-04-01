@@ -46,7 +46,7 @@
 #undef max
 #endif
 
-#define NOTIFLY_VERSION_MAJOR 2
+#define NOTIFLY_VERSION_MAJOR 3
 #define NOTIFLY_VERSION_MINOR 0
 #define NOTIFLY_VERSION_PATCH 0
 

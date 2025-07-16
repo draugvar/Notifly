@@ -3,7 +3,7 @@ name: Bug report
 title: '[BUG] '
 labels: [ bug ]
 assignees: [ 'octocat' ]
-description: Create a new issue to report a bug in the project.
+description: Report a bug or unexpected behavior in the project
 
 body:
   - type: markdown

@@ -5,3 +5,10 @@ labels: [ bug ]
 assignees: octocat
 description: Describe the bug in detail.
 body:
+- type: markdown
+  attributes:
+    value: "## Welcome!"
+- type: markdown
+  attributes:
+    value: |
+      Thanks for taking the time to fill out this bug!

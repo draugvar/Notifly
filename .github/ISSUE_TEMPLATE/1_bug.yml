@@ -2,12 +2,179 @@
 name: Bug report
 title: '[BUG] '
 labels: [ bug ]
-assignees: octocat
-description: Describe the bug in detail.
+assignees: 
+description: Create a new issue to report a bug in the project.
+
 body:
-- type: markdown
-  attributes:
-    value: "Bugs are the worst!"
-- type: textarea
-  attributes:
-    label: "What's wrong?"
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a bug! Please fill out the form below to help us investigate and fix the issue.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      description: Please confirm the following before submitting your bug report
+      options:
+        - label: I have searched for existing bug reports
+          required: true
+        - label: I have tested with the latest version
+          required: true
+        - label: I can reproduce this bug consistently
+          required: true
+        - label: This is not a feature request or question
+          required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Bug Severity
+      description: How severe is this bug?
+      options:
+        - Low (Minor inconvenience)
+        - Medium (Affects functionality)
+        - High (Major functionality broken)
+        - Critical (Crashes or data loss)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: bug_type
+    attributes:
+      label: Bug Type
+      description: What type of bug is this?
+      options:
+        - Crash/Segmentation fault
+        - Memory leak
+        - Logic error
+        - API behavior
+        - Build/compilation issue
+        - Performance regression
+        - Platform-specific issue
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Please provide details about your environment
+      value: |
+        - OS: (e.g., macOS 15, Ubuntu 22.04, Windows 11)
+        - Architecture: (x86_64, ARM64, etc.)
+        - Compiler: (gcc 13.2, clang 15, MSVC 2022)
+        - CMake version: 
+        - Notifly version/commit: 
+        - Build type: (Debug/Release)
+        - Build system: (Unix Makefiles, Ninja, Visual Studio)
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Bug Description
+      description: A clear and concise description of what the bug is
+      placeholder: When I do X, Y happens instead of Z...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected Behavior
+      description: What should happen instead?
+      placeholder: I expected...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: Actual Behavior
+      description: What actually happens?
+      placeholder: Instead, what happens is...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: Steps to Reproduce
+      description: Provide detailed steps to reproduce the bug
+      placeholder: |
+        1. Compile with...
+        2. Run the program with...
+        3. Call function X with parameters...
+        4. Observe that...
+    validations:
+      required: true
+
+  - type: textarea
+    id: minimal_example
+    attributes:
+      label: Minimal Code Example
+      description: Provide the smallest possible code example that reproduces the bug
+      placeholder: |
+        #include "notifly.h"
+        
+        int main() {
+            // Minimal code that reproduces the bug
+            return 0;
+        }
+      render: cpp
+    validations:
+      required: false
+
+  - type: textarea
+    id: error_output
+    attributes:
+      label: Error Output/Stack Trace
+      description: Include any error messages, stack traces, or debug output
+      placeholder: Paste error messages, stack traces, or debug output here...
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: debug_info
+    attributes:
+      label: Additional Debug Information
+      description: Include any additional debugging information (valgrind output, sanitizer reports, core dumps info, etc.)
+      placeholder: Any additional debugging information...
+    validations:
+      required: false
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Workaround
+      description: If you found a workaround, please describe it
+      placeholder: I found that doing X instead of Y works around the issue...
+    validations:
+      required: false
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: Frequency
+      description: How often does this bug occur?
+      options:
+        - Always (100%)
+        - Often (>50%)
+        - Sometimes (10-50%)
+        - Rarely (<10%)
+        - Only once
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional Context
+      description: Add any other context about the problem here (screenshots, related issues, etc.)
+    validations:
+      required: false

@@ -1,0 +1,96 @@
+---
+name: Build/Compilation Issue
+title: '[BUILD] '
+labels: [ build ]
+assignees: 
+description: Report issues with building or compiling the project
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a build issue! Please provide detailed information to help us resolve the compilation problem.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      description: Please confirm the following before submitting
+      options:
+        - label: I have read the build instructions in README
+          required: true
+        - label: I have searched for existing build-related issues
+          required: true
+        - label: I have tried a clean build
+          required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Build Environment
+      description: Please provide details about your build environment
+      value: |
+        - OS: 
+        - Compiler: (gcc/clang/msvc version)
+        - CMake version: 
+        - Build system: (make/ninja/Visual Studio)
+        - Architecture: (x86/x64/ARM)
+        - Build type: (Debug/Release)
+      render: markdown
+    validations:
+      required: true
+
+  - type: dropdown
+    id: build_stage
+    attributes:
+      label: Build Stage
+      description: At what stage does the build fail?
+      options:
+        - CMake configuration
+        - Compilation
+        - Linking
+        - Testing
+        - Installation
+        - Dependency resolution
+    validations:
+      required: true
+
+  - type: textarea
+    id: build_command
+    attributes:
+      label: Build Command
+      description: What command did you use to build?
+      placeholder: |
+        mkdir build && cd build
+        cmake ..
+        make
+      render: bash
+    validations:
+      required: true
+
+  - type: textarea
+    id: error_output
+    attributes:
+      label: Error Output
+      description: Please paste the complete error output
+      placeholder: Paste the full error message here...
+      render: shell
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected Behavior
+      description: What should happen instead?
+      placeholder: The build should complete successfully...
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional_info
+    attributes:
+      label: Additional Information
+      description: Any other relevant information (custom CMake flags, environment variables, etc.)
+    validations:
+      required: false

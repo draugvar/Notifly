@@ -1,0 +1,90 @@
+---
+name: Question
+title: '[QUESTION] '
+labels: [ question ]
+assignees: 
+description: Ask a question about the project
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for your question! Please provide as much detail as possible to help us give you the best answer.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      description: Please confirm the following before asking
+      options:
+        - label: I have read the README and documentation
+          required: true
+        - label: I have searched existing issues and discussions
+          required: true
+        - label: My question is related to this project
+          required: true
+
+  - type: dropdown
+    id: question_type
+    attributes:
+      label: Question Type
+      description: What type of question is this?
+      options:
+        - Usage/How-to
+        - API/Implementation
+        - Building/Compilation
+        - Integration
+        - Best Practices
+        - Troubleshooting
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      description: What would you like to know?
+      placeholder: I'm trying to understand how to...
+    validations:
+      required: true
+
+  - type: textarea
+    id: context
+    attributes:
+      label: Context
+      description: Provide any relevant context about what you're trying to achieve
+      placeholder: I'm working on a project that...
+    validations:
+      required: false
+
+  - type: textarea
+    id: attempted_solutions
+    attributes:
+      label: What have you tried?
+      description: Describe any approaches you've already attempted
+      placeholder: I tried...
+    validations:
+      required: false
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment (if relevant)
+      description: Include environment details if they're relevant to your question
+      value: |
+        - OS: 
+        - Compiler: 
+        - Notifly version: 
+      render: markdown
+    validations:
+      required: false
+
+  - type: textarea
+    id: code_sample
+    attributes:
+      label: Code Sample (if applicable)
+      description: Include any relevant code that relates to your question
+      render: cpp
+    validations:
+      required: false

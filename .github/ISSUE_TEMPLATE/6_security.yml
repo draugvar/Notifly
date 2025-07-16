@@ -1,0 +1,106 @@
+---
+name: Security Vulnerability
+title: '[SECURITY] '
+labels: [ security ]
+assignees: 
+description: Report a security vulnerability (use responsibly)
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        **⚠️ SECURITY NOTICE ⚠️**
+        
+        If this is a serious security vulnerability that could be exploited, please consider reporting it privately first by emailing the maintainers instead of creating a public issue.
+        
+        For non-critical security improvements or general security questions, you can use this template.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      description: Please confirm the following
+      options:
+        - label: I have assessed that this is not a critical vulnerability that should be reported privately
+          required: true
+        - label: I have searched for existing security-related issues
+          required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: Severity Level
+      description: How severe do you consider this security issue?
+      options:
+        - Low (Security improvement suggestion)
+        - Medium (Potential security weakness)
+        - High (Exploitable vulnerability)
+        - Critical (Immediate security threat)
+    validations:
+      required: true
+
+  - type: dropdown
+    id: vulnerability_type
+    attributes:
+      label: Vulnerability Type
+      description: What type of security issue is this?
+      options:
+        - Buffer overflow
+        - Memory leak
+        - Input validation
+        - Authentication/Authorization
+        - Cryptographic issue
+        - Dependency vulnerability
+        - Code injection
+        - Information disclosure
+        - Other
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Security Issue Description
+      description: Describe the security vulnerability or concern
+      placeholder: The vulnerability allows...
+    validations:
+      required: true
+
+  - type: textarea
+    id: impact
+    attributes:
+      label: Potential Impact
+      description: What could an attacker achieve by exploiting this?
+      placeholder: An attacker could...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to Reproduce
+      description: How can this vulnerability be reproduced?
+      placeholder: |
+        1. Compile with...
+        2. Run with input...
+        3. Observe...
+    validations:
+      required: true
+
+  - type: textarea
+    id: affected_versions
+    attributes:
+      label: Affected Versions
+      description: Which versions are affected by this vulnerability?
+      placeholder: All versions / Versions 1.0-2.0 / Latest version
+    validations:
+      required: true
+
+  - type: textarea
+    id: suggested_fix
+    attributes:
+      label: Suggested Fix
+      description: If you have suggestions for how to fix this, please share them
+      placeholder: The issue could be fixed by...
+    validations:
+      required: false

@@ -1,0 +1,200 @@
+---
+name: Regression
+title: '[REGRESSION] '
+labels: [ regression, bug ]
+assignees: 
+description: Report something that worked before but is now broken
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a regression! This helps us identify when and why something stopped working.
+        
+        **A regression is when functionality that previously worked correctly now fails or behaves differently.**
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      description: Please confirm the following before submitting
+      options:
+        - label: I have confirmed this worked in a previous version
+          required: true
+        - label: I have searched for existing regression reports
+          required: true
+        - label: I can identify approximately when it stopped working
+          required: true
+        - label: This is not a new feature request or general bug
+          required: true
+
+  - type: dropdown
+    id: regression_type
+    attributes:
+      label: Regression Type
+      description: What type of regression is this?
+      options:
+        - Functionality broken
+        - Performance degradation
+        - API behavior changed
+        - Build/compilation broken
+        - Memory usage increased
+        - Output format changed
+        - Other behavioral change
+    validations:
+      required: true
+
+  - type: textarea
+    id: working_version
+    attributes:
+      label: Last Known Working Version
+      description: What was the last version/commit where this worked correctly?
+      placeholder: |
+        - Version: (e.g., v1.2.3, commit sha: abc123)
+        - Date: (e.g., "2 weeks ago", "December 2024")
+        - How you know it worked: (tested, used in production, etc.)
+    validations:
+      required: true
+
+  - type: textarea
+    id: broken_version
+    attributes:
+      label: First Broken Version
+      description: What is the first version/commit where you noticed it was broken?
+      placeholder: |
+        - Version: (e.g., v1.3.0, commit sha: def456, "current main")
+        - Date: (when you first noticed)
+        - Confidence level: (certain/likely/unsure)
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Please provide your environment details
+      value: |
+        - OS: (e.g., macOS 15, Ubuntu 22.04, Windows 11)
+        - Architecture: (x86_64, ARM64, etc.)
+        - Compiler: (gcc 13.2, clang 15, MSVC 2022)
+        - CMake version: 
+        - Build type: (Debug/Release)
+        - Build configuration: (any special flags or options)
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Regression Description
+      description: Describe what stopped working or changed behavior
+      placeholder: |
+        Previously, when I would [describe action], the result was [expected behavior].
+        Now, when I do the same thing, [describe what happens instead].
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: Steps to Reproduce
+      description: Provide exact steps that demonstrate the regression
+      placeholder: |
+        1. Use the exact same code/configuration that worked before
+        2. Build/run with the same parameters as before
+        3. Execute [specific action]
+        4. Observe that the behavior is now different
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_behavior
+    attributes:
+      label: Expected Behavior (What Used to Work)
+      description: Describe the behavior that worked in the previous version
+      placeholder: In the working version, this would...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual_behavior
+    attributes:
+      label: Actual Behavior (What's Broken Now)
+      description: Describe what happens now instead
+      placeholder: In the current version, this now...
+    validations:
+      required: true
+
+  - type: textarea
+    id: code_example
+    attributes:
+      label: Code Example
+      description: Provide the same code that worked before but now fails
+      placeholder: |
+        #include "notifly.h"
+        
+        int main() {
+            // This exact code worked in version X but fails in version Y
+            return 0;
+        }
+      render: cpp
+    validations:
+      required: false
+
+  - type: textarea
+    id: error_output
+    attributes:
+      label: Error Output (if any)
+      description: Include any new error messages that weren't present before
+      placeholder: New error messages, warnings, or different output...
+      render: shell
+    validations:
+      required: false
+
+  - type: textarea
+    id: bisect_info
+    attributes:
+      label: Git Bisect Information
+      description: If you've done a git bisect or have suspects for the breaking commit
+      placeholder: |
+        - Bisect result: commit abc123 introduced the regression
+        - Suspected commits: [list any commits you think might be related]
+        - Suspected changes: [recent PRs or features that might be related]
+    validations:
+      required: false
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: Impact Level
+      description: How does this regression affect your usage?
+      options:
+        - Blocking (Cannot use the library)
+        - High (Major workflow disruption)
+        - Medium (Workaround needed)
+        - Low (Minor inconvenience)
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: Current Workaround
+      description: Any temporary solution you're using
+      placeholder: I'm currently using an older version / I've modified the code to...
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional_context
+    attributes:
+      label: Additional Context
+      description: Any other information that might help identify the cause
+      placeholder: |
+        - Related changes in your project
+        - Other symptoms you've noticed
+        - Performance measurements (if applicable)
+        - Links to related issues or discussions
+    validations:
+      required: false

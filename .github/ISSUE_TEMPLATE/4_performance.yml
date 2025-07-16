@@ -1,0 +1,97 @@
+---
+name: Performance Issue
+title: '[PERFORMANCE] '
+labels: [ performance ]
+assignees: 
+description: Report a performance issue or bottleneck
+
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting a performance issue! Please provide detailed information to help us investigate and improve performance.
+
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      description: Please confirm the following before submitting
+      options:
+        - label: I have searched for existing performance issues
+          required: true
+        - label: I have tested with the latest version
+          required: true
+        - label: I have profiled or measured the performance issue
+          required: true
+
+  - type: textarea
+    id: environment
+    attributes:
+      label: Environment
+      description: Please provide details about your environment
+      value: |
+        - OS: 
+        - Compiler: 
+        - Architecture: 
+        - Build type: (Debug/Release)
+        - Notifly version: 
+      render: markdown
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: Performance Issue Description
+      description: Describe the performance problem you're experiencing
+      placeholder: The application becomes slow when...
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected_performance
+    attributes:
+      label: Expected Performance
+      description: What performance did you expect?
+      placeholder: I expected the operation to complete in...
+    validations:
+      required: true
+
+  - type: textarea
+    id: actual_performance
+    attributes:
+      label: Actual Performance
+      description: What performance are you actually seeing?
+      placeholder: The operation takes... / CPU usage is... / Memory usage is...
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction_steps
+    attributes:
+      label: Steps to Reproduce
+      description: How can we reproduce this performance issue?
+      placeholder: |
+        1. Compile with...
+        2. Run with parameters...
+        3. Observe...
+    validations:
+      required: true
+
+  - type: textarea
+    id: profiling_data
+    attributes:
+      label: Profiling Data
+      description: If you have profiling data, benchmarks, or measurements, please share them
+      placeholder: Attach profiler output, benchmark results, or performance measurements
+    validations:
+      required: false
+
+  - type: textarea
+    id: code_sample
+    attributes:
+      label: Code Sample
+      description: Provide a minimal code sample that demonstrates the performance issue
+      render: cpp
+    validations:
+      required: false

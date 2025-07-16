@@ -2,7 +2,7 @@
 name: Question
 title: '[QUESTION] '
 labels: [ question ]
-assignees: 
+assignees: [ 'octocat' ]
 description: Ask a question about the project
 
 body:

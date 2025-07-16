@@ -2,7 +2,7 @@
 name: Documentation
 title: '[DOCS] '
 labels: [ documentation ]
-assignees: 
+assignees: [ 'octocat' ]
 description: Report an issue with documentation or suggest improvements
 
 body:

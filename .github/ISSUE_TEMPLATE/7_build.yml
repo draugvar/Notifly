@@ -2,7 +2,7 @@
 name: Build/Compilation Issue
 title: '[BUILD] '
 labels: [ build ]
-assignees: 
+assignees: [ 'octocat' ]
 description: Report issues with building or compiling the project
 
 body:

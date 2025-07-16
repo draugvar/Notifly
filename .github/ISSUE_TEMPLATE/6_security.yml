@@ -2,7 +2,7 @@
 name: Security Vulnerability
 title: '[SECURITY] '
 labels: [ security ]
-assignees: 
+assignees: [ 'octocat' ]
 description: Report a security vulnerability (use responsibly)
 
 body:

@@ -2,7 +2,7 @@
 name: Regression
 title: '[REGRESSION] '
 labels: [ regression, bug ]
-assignees: 
+assignees: [ 'octocat' ]
 description: Report something that worked before but is now broken
 
 body:

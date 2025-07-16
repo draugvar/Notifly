@@ -2,7 +2,7 @@
 name: Performance Issue
 title: '[PERFORMANCE] '
 labels: [ performance ]
-assignees: 
+assignees: [ 'octocat' ]
 description: Report a performance issue or bottleneck
 
 body:

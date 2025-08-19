@@ -41,10 +41,14 @@ jobs:
         if: runner.os == 'Linux'
         working-directory: build
         shell: bash
-        run: ./notifly_unit_test
+        run: |
+          ./notifly_unit_test
+          ./notifly_c_gtest
 
       - name: Test on Windows
         if: runner.os == 'Windows'
         working-directory: build
         shell: pwsh
-        run: .\Release\notifly_unit_test.exe
+        run: |
+          .\Release\notifly_unit_test.exe
+          .\Release\notifly_c_gtest.exe

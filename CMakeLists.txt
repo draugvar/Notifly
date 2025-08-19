@@ -22,6 +22,7 @@ set_target_properties(${PROJECT_NAME}_c PROPERTIES
         OUTPUT_NAME "notifly_c"
         VERSION 1.0.0
         SOVERSION 1
+        DEFINE_SYMBOL "NOTIFLY_C_EXPORTS"
 )
 
 target_compile_features(${PROJECT_NAME}_c PUBLIC cxx_std_20)
@@ -52,7 +53,7 @@ set_target_properties(gtest_main PROPERTIES MSVC_RUNTIME_LIBRARY MultiThreaded$<
 
 # 'Unit_Tests_run' is the target name
 # 'UNIT_SOURCE' are source files with tests
-file(GLOB UNIT_SOURCE test/*.cpp test/*.h src/*.cpp include/*.h)
+file(GLOB UNIT_SOURCE test/unit_test.cpp test/unit_test.h src/*.cpp include/*.h)
 
 set(UNIT_TEST notifly_unit_test)
 add_executable(${UNIT_TEST} ${UNIT_SOURCE})
@@ -88,6 +89,22 @@ set_target_properties(${C_EXAMPLE}
         PROPERTIES
         OUTPUT_NAME ${C_EXAMPLE}
         LINKER_LANGUAGE C
+        )
+
+# C Interface Google Test
+set(C_GTEST notifly_c_gtest)
+add_executable(${C_GTEST} test/test_c_api_gtest.cpp)
+target_link_libraries(${C_GTEST} PRIVATE 
+        ${PROJECT_NAME}_c
+        ${CMAKE_THREAD_LIBS_INIT}
+        $<$<PLATFORM_ID:Linux>:dl>
+        gtest
+        gtest_main)
+target_include_directories(${C_GTEST} PRIVATE include)
+set_target_properties(${C_GTEST}
+        PROPERTIES
+        OUTPUT_NAME ${C_GTEST}
+        MSVC_RUNTIME_LIBRARY MultiThreaded$<$<CONFIG:Debug>:Debug>
         )
 
 # Function to copy a file only if it does not exist or is different

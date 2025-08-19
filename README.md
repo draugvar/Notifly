@@ -4,7 +4,37 @@ This project was originally forked from https://github.com/Geenz/CPP-Notificatio
 
 A C++ API inspired by Cocoa's NSNotificationCenter API.
 
-## Usage
+## C Interface
+
+Notifly now includes a **C interface** that provides access to the notification center functionality from C programs through a shared library (DLL/SO). This allows you to use Notifly from C projects while maintaining the performance and features of the C++ implementation.
+
+**Key features of the C interface:**
+- Shared library (`libnotifly_c.so`/`notifly_c.dll`) for easy integration
+- Handle-based API for type safety
+- Function pointer callbacks
+- Synchronous and asynchronous notification posting
+- Full compatibility with the C++ API functionality
+
+See [docs/C_INTERFACE.md](docs/C_INTERFACE.md) for complete documentation and examples.
+
+**Quick C example:**
+```c
+#include "notifly_c.h"
+
+void my_callback(int notification_id, void* data, void* user_data) {
+    printf("Received notification %d\n", notification_id);
+}
+
+int main() {
+    notifly_handle notifly = notifly_default();
+    int observer_id = notifly_add_observer(notifly, 1001, my_callback, NULL);
+    notifly_post_notification(notifly, 1001, NULL);
+    notifly_remove_observer(notifly, observer_id);
+    return 0;
+}
+```
+
+## C++ API Usage
 
 Using `notifly` is simple. In order to use the default center, simply use the static
 method `notifly::default_notifly()` like so:

@@ -12,6 +12,21 @@ add_executable(${PROJECT_NAME}
 set_target_properties(${PROJECT_NAME} PROPERTIES LINKER_LANGUAGE CXX)
 target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_20)
 
+# C Interface shared library
+add_library(${PROJECT_NAME}_c SHARED
+        src/notifly_c.cpp
+)
+
+set_target_properties(${PROJECT_NAME}_c PROPERTIES
+        LINKER_LANGUAGE CXX
+        OUTPUT_NAME "notifly_c"
+        VERSION 1.0.0
+        SOVERSION 1
+)
+
+target_compile_features(${PROJECT_NAME}_c PUBLIC cxx_std_20)
+target_include_directories(${PROJECT_NAME}_c PUBLIC include)
+
 include(FetchContent)
 
 #
@@ -51,6 +66,28 @@ set_target_properties(${UNIT_TEST}
         PROPERTIES
         OUTPUT_NAME ${UNIT_TEST}
         MSVC_RUNTIME_LIBRARY MultiThreaded$<$<CONFIG:Debug>:Debug>
+        )
+
+# C Interface test
+set(C_TEST notifly_c_test)
+add_executable(${C_TEST} test/test_c_interface.c)
+target_link_libraries(${C_TEST} PRIVATE ${PROJECT_NAME}_c)
+target_include_directories(${C_TEST} PRIVATE include)
+set_target_properties(${C_TEST}
+        PROPERTIES
+        OUTPUT_NAME ${C_TEST}
+        LINKER_LANGUAGE C
+        )
+
+# C Interface example
+set(C_EXAMPLE notifly_c_example)
+add_executable(${C_EXAMPLE} example/c_example.c)
+target_link_libraries(${C_EXAMPLE} PRIVATE ${PROJECT_NAME}_c)
+target_include_directories(${C_EXAMPLE} PRIVATE include)
+set_target_properties(${C_EXAMPLE}
+        PROPERTIES
+        OUTPUT_NAME ${C_EXAMPLE}
+        LINKER_LANGUAGE C
         )
 
 # Function to copy a file only if it does not exist or is different

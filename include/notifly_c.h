@@ -26,6 +26,16 @@
 #ifndef NOTIFLY_C_H
 #define NOTIFLY_C_H
 
+#ifdef _WIN32
+    #ifdef NOTIFLY_C_EXPORTS
+        #define NOTIFLY_C_API __declspec(dllexport)
+    #else
+        #define NOTIFLY_C_API __declspec(dllimport)
+    #endif
+#else
+    #define NOTIFLY_C_API
+#endif
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -52,21 +62,21 @@ typedef enum {
 #define NOTIFLY_C_VERSION_PATCH 0
 
 /* Instance management */
-notifly_handle notifly_create(void);
-void notifly_destroy(notifly_handle handle);
-notifly_handle notifly_default(void);
+NOTIFLY_C_API notifly_handle notifly_create(void);
+NOTIFLY_C_API void notifly_destroy(notifly_handle handle);
+NOTIFLY_C_API notifly_handle notifly_default(void);
 
 /* Observer management */
-int notifly_add_observer(notifly_handle handle, int notification_id, notifly_callback callback, void* user_data);
-int notifly_remove_observer(notifly_handle handle, int observer_id);
-int notifly_remove_all_observers(notifly_handle handle, int notification_id);
+NOTIFLY_C_API int notifly_add_observer(notifly_handle handle, int notification_id, notifly_callback callback, void* user_data);
+NOTIFLY_C_API int notifly_remove_observer(notifly_handle handle, int observer_id);
+NOTIFLY_C_API int notifly_remove_all_observers(notifly_handle handle, int notification_id);
 
 /* Notification posting */
-int notifly_post_notification(notifly_handle handle, int notification_id, void* data);
-int notifly_post_notification_async(notifly_handle handle, int notification_id, void* data);
+NOTIFLY_C_API int notifly_post_notification(notifly_handle handle, int notification_id, void* data);
+NOTIFLY_C_API int notifly_post_notification_async(notifly_handle handle, int notification_id, void* data);
 
 /* Utility functions */
-const char* notifly_result_to_string(int result);
+NOTIFLY_C_API const char* notifly_result_to_string(int result);
 
 #ifdef __cplusplus
 }

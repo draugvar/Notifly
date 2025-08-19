@@ -22,6 +22,7 @@ set_target_properties(${PROJECT_NAME}_c PROPERTIES
         OUTPUT_NAME "notifly_c"
         VERSION 1.0.0
         SOVERSION 1
+        DEFINE_SYMBOL "NOTIFLY_C_EXPORTS"
 )
 
 target_compile_features(${PROJECT_NAME}_c PUBLIC cxx_std_20)

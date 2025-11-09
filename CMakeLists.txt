@@ -69,17 +69,6 @@ set_target_properties(${UNIT_TEST}
         MSVC_RUNTIME_LIBRARY MultiThreaded$<$<CONFIG:Debug>:Debug>
         )
 
-# C Interface test
-set(C_TEST notifly_c_test)
-add_executable(${C_TEST} test/test_c_interface.c)
-target_link_libraries(${C_TEST} PRIVATE ${PROJECT_NAME}_c)
-target_include_directories(${C_TEST} PRIVATE include)
-set_target_properties(${C_TEST}
-        PROPERTIES
-        OUTPUT_NAME ${C_TEST}
-        LINKER_LANGUAGE C
-        )
-
 # C Interface example
 set(C_EXAMPLE notifly_c_example)
 add_executable(${C_EXAMPLE} example/c_example.c)
@@ -91,20 +80,18 @@ set_target_properties(${C_EXAMPLE}
         LINKER_LANGUAGE C
         )
 
-# C Interface Google Test
-set(C_GTEST notifly_c_gtest)
-add_executable(${C_GTEST} test/test_c_api_gtest.cpp)
-target_link_libraries(${C_GTEST} PRIVATE 
+# C Interface test (pure C, no GoogleTest)
+set(C_API_TEST notifly_c_api_test)
+add_executable(${C_API_TEST} test/c_api_test.c)
+target_link_libraries(${C_API_TEST} PRIVATE
         ${PROJECT_NAME}_c
         ${CMAKE_THREAD_LIBS_INIT}
-        $<$<PLATFORM_ID:Linux>:dl>
-        gtest
-        gtest_main)
-target_include_directories(${C_GTEST} PRIVATE include)
-set_target_properties(${C_GTEST}
+        $<$<PLATFORM_ID:Linux>:dl>)
+target_include_directories(${C_API_TEST} PRIVATE include)
+set_target_properties(${C_API_TEST}
         PROPERTIES
-        OUTPUT_NAME ${C_GTEST}
-        MSVC_RUNTIME_LIBRARY MultiThreaded$<$<CONFIG:Debug>:Debug>
+        OUTPUT_NAME ${C_API_TEST}
+        LINKER_LANGUAGE C
         )
 
 # Enable CTest
@@ -112,7 +99,7 @@ enable_testing()
 
 # Add tests to CTest
 add_test(NAME UnitTests COMMAND ${UNIT_TEST})
-add_test(NAME CApiTests COMMAND ${C_GTEST})
+add_test(NAME CApiTests COMMAND ${C_API_TEST})
 
 # Function to copy a file only if it does not exist or is different
 function(move_file source_file destination_dir)

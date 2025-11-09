@@ -53,12 +53,13 @@ typedef enum {
     NOTIFLY_NOTIFICATION_NOT_FOUND = -2,
     NOTIFLY_PAYLOAD_TYPE_NOT_MATCH = -3,
     NOTIFLY_NO_MORE_OBSERVER_IDS = -4,
-    NOTIFLY_INVALID_HANDLE = -5
+    NOTIFLY_TIMEOUT = -5,
+    NOTIFLY_INVALID_HANDLE = -6
 } notifly_result_t;
 
 /* Library version */
 #define NOTIFLY_C_VERSION_MAJOR 1
-#define NOTIFLY_C_VERSION_MINOR 0  
+#define NOTIFLY_C_VERSION_MINOR 1
 #define NOTIFLY_C_VERSION_PATCH 0
 
 /* Instance management */
@@ -74,6 +75,14 @@ NOTIFLY_C_API int notifly_remove_all_observers(notifly_handle handle, int notifi
 /* Notification posting */
 NOTIFLY_C_API int notifly_post_notification(notifly_handle handle, int notification_id, void* data);
 NOTIFLY_C_API int notifly_post_notification_async(notifly_handle handle, int notification_id, void* data);
+
+/* Synchronous request-response pattern */
+NOTIFLY_C_API int notifly_post_and_wait(notifly_handle handle,
+                                        int post_notification_id,
+                                        int wait_notification_id,
+                                        int timeout_ms,
+                                        void* post_data,
+                                        void** response_data);
 
 /* Utility functions */
 NOTIFLY_C_API const char* notifly_result_to_string(int result);

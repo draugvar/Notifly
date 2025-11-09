@@ -25,10 +25,10 @@ struct notifly_instance {
 // Wrapper callback that adapts C++ callback to C callback
 class CallbackWrapper {
 public:
-    CallbackWrapper(notifly_callback cb, void* user_data) 
+    CallbackWrapper(const notifly_callback cb, void* user_data)
         : callback(cb), user_data(user_data) {}
     
-    void operator()(void* data) {
+    void operator()(void* data) const {
         callback(0, data, user_data); // notification_id will be set by the caller
     }
     
@@ -52,14 +52,13 @@ notifly_handle notifly_create(void) {
     }
 }
 
-void notifly_destroy(notifly_handle handle) {
-    if (handle) {
+void notifly_destroy(const notifly_handle handle)
+{
         delete handle;
-    }
 }
 
 notifly_handle notifly_default(void) {
-    std::lock_guard<std::mutex> lock(g_default_mutex);
+    std::lock_guard lock(g_default_mutex);
     if (g_default_handle == nullptr) {
         // Create a wrapper around the default C++ instance
         // Note: we don't own the C++ default instance, so we create a special wrapper
@@ -70,7 +69,7 @@ notifly_handle notifly_default(void) {
 
 int notifly_add_observer(notifly_handle handle, int notification_id, notifly_callback callback, void* user_data) {
     if (!handle || !callback) {
-        return static_cast<int>(NOTIFLY_INVALID_HANDLE);
+        return NOTIFLY_INVALID_HANDLE;
     }
     
     try {
@@ -84,28 +83,28 @@ int notifly_add_observer(notifly_handle handle, int notification_id, notifly_cal
         }
         
         // Create a lambda that captures the notification_id and calls our C callback
-        auto cpp_callback = [handle, notification_id, callback, user_data](void* data) {
+        auto cpp_callback = [notification_id, callback, user_data](void* data) {
             callback(notification_id, data, user_data);
         };
         
         // Add observer to the C++ instance
-        int observer_id = instance->add_observer(notification_id, cpp_callback);
+        const int observer_id = instance->add_observer(notification_id, cpp_callback);
         
         if (observer_id > 0) {
             // Store callback info for cleanup
-            std::lock_guard<std::mutex> lock(handle->callback_mutex);
+            std::lock_guard lock(handle->callback_mutex);
             handle->callbacks[observer_id] = std::make_pair(callback, user_data);
         }
         
         return observer_id;
     } catch (...) {
-        return static_cast<int>(NOTIFLY_INVALID_HANDLE);
+        return NOTIFLY_INVALID_HANDLE;
     }
 }
 
-int notifly_remove_observer(notifly_handle handle, int observer_id) {
+int notifly_remove_observer(notifly_handle handle, const int observer_id) {
     if (!handle) {
-        return static_cast<int>(NOTIFLY_INVALID_HANDLE);
+        return NOTIFLY_INVALID_HANDLE;
     }
     
     try {
@@ -119,23 +118,23 @@ int notifly_remove_observer(notifly_handle handle, int observer_id) {
         }
         
         // Remove from C++ instance
-        int result = instance->remove_observer(observer_id);
+        const int result = instance->remove_observer(observer_id);
         
         // Clean up our callback info
         if (result == static_cast<int>(notifly_result::success)) {
-            std::lock_guard<std::mutex> lock(handle->callback_mutex);
+            std::lock_guard lock(handle->callback_mutex);
             handle->callbacks.erase(observer_id);
         }
         
         return result;
     } catch (...) {
-        return static_cast<int>(NOTIFLY_INVALID_HANDLE);
+        return NOTIFLY_INVALID_HANDLE;
     }
 }
 
-int notifly_remove_all_observers(notifly_handle handle, int notification_id) {
+int notifly_remove_all_observers(notifly_handle handle, const int notification_id) {
     if (!handle) {
-        return static_cast<int>(NOTIFLY_INVALID_HANDLE);
+        return NOTIFLY_INVALID_HANDLE;
     }
     
     try {
@@ -147,26 +146,26 @@ int notifly_remove_all_observers(notifly_handle handle, int notification_id) {
             // This is the default instance
             instance = &notifly::default_notifly();
         }
-        
-        int result = instance->remove_all_observers(notification_id);
+
+        const int result = instance->remove_all_observers(notification_id);
         
         // Clean up our callback info - remove all callbacks for this notification
         // Note: This is a simplified cleanup. In practice, we'd need to track which
         // observers belong to which notification, but for now this clears all.
         if (result > 0) {
-            std::lock_guard<std::mutex> lock(handle->callback_mutex);
+            std::lock_guard lock(handle->callback_mutex);
             handle->callbacks.clear();
         }
         
         return result;
     } catch (...) {
-        return static_cast<int>(NOTIFLY_INVALID_HANDLE);
+        return NOTIFLY_INVALID_HANDLE;
     }
 }
 
-int notifly_post_notification(notifly_handle handle, int notification_id, void* data) {
+int notifly_post_notification(notifly_handle handle, const int notification_id, void* data) {
     if (!handle) {
-        return static_cast<int>(NOTIFLY_INVALID_HANDLE);
+        return NOTIFLY_INVALID_HANDLE;
     }
     
     try {
@@ -182,13 +181,13 @@ int notifly_post_notification(notifly_handle handle, int notification_id, void* 
         // Post notification with void* data
         return instance->post_notification(notification_id, data);
     } catch (...) {
-        return static_cast<int>(NOTIFLY_INVALID_HANDLE);
+        return NOTIFLY_INVALID_HANDLE;
     }
 }
 
-int notifly_post_notification_async(notifly_handle handle, int notification_id, void* data) {
+int notifly_post_notification_async(notifly_handle handle, const int notification_id, void* data) {
     if (!handle) {
-        return static_cast<int>(NOTIFLY_INVALID_HANDLE);
+        return NOTIFLY_INVALID_HANDLE;
     }
     
     try {
@@ -204,11 +203,53 @@ int notifly_post_notification_async(notifly_handle handle, int notification_id, 
         // Post notification asynchronously with void* data
         return instance->post_notification_async(notification_id, data);
     } catch (...) {
-        return static_cast<int>(NOTIFLY_INVALID_HANDLE);
+        return NOTIFLY_INVALID_HANDLE;
     }
 }
 
-const char* notifly_result_to_string(int result) {
+int notifly_post_and_wait(notifly_handle handle,
+                         const int post_notification_id,
+                         const int wait_notification_id,
+                         const int timeout_ms,
+                         void* post_data,
+                         void** response_data) {
+    if (!handle || !response_data) {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+
+    try {
+        // Get the actual notifly instance
+        notifly* instance = nullptr;
+        if (handle->instance) {
+            instance = handle->instance.get();
+        } else {
+            // This is the default instance
+            instance = &notifly::default_notifly();
+        }
+
+        // Use the C++ post_and_wait with void* type
+        void* result = nullptr;
+        auto ret = instance->post_and_wait(
+            post_notification_id,
+            wait_notification_id,
+            timeout_ms,
+            result,
+            post_data
+        );
+
+        if (ret == notifly_result::success) {
+            *response_data = result;
+        } else {
+            *response_data = nullptr;
+        }
+
+        return static_cast<int>(ret);
+    } catch (...) {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+}
+
+const char* notifly_result_to_string(const int result) {
     switch (result) {
         case NOTIFLY_SUCCESS:
             return "Success";
@@ -220,6 +261,8 @@ const char* notifly_result_to_string(int result) {
             return "Payload type mismatch";
         case NOTIFLY_NO_MORE_OBSERVER_IDS:
             return "No more observer IDs available";
+        case NOTIFLY_TIMEOUT:
+            return "Timeout";
         case NOTIFLY_INVALID_HANDLE:
             return "Invalid handle";
         default:

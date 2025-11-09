@@ -283,7 +283,7 @@ TEST(notifly, lambda_no_params)
 
 TEST(notifly, lambda_no_params_return_void)
 {
-    auto lambda = []()
+    auto lambda = []
     {
         printf("No params\n");
     };
@@ -392,7 +392,9 @@ TEST(notifly, post_and_wait_success)
     notifly::default_notifly().remove_all_observers(second_poster);
 
     // Setup: register responder observer that listens for the request
-    const auto responder_id = notifly::default_notifly().add_observer(poster, [](int a, int b) {
+    const auto responder_id = notifly::default_notifly().add_observer(poster,
+        [](int, int)
+    {
         // Simulate some processing
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
         // Send response on second_poster
@@ -458,12 +460,14 @@ TEST(notifly, post_and_wait_with_observer)
     notifly::default_notifly().remove_all_observers(second_poster);
 
     // Setup: add observer that will respond
-    const auto observer_id = notifly::default_notifly().add_observer(poster, [](const int a, const int b) {
-        // Simulate some processing
-        std::this_thread::sleep_for(std::chrono::milliseconds(50));
-        // Send response
-        notifly::default_notifly().post_notification(second_poster, a + b, a * b);
-    });
+    const auto observer_id = notifly::default_notifly().add_observer(poster,
+        [](const int a, const int b)
+        {
+            // Simulate some processing
+            std::this_thread::sleep_for(std::chrono::milliseconds(50));
+            // Send response
+            notifly::default_notifly().post_notification(second_poster, a + b, a * b);
+        });
 
     // Test: post and wait
     std::tuple<int, int> result;
@@ -489,7 +493,8 @@ TEST(notifly, post_and_wait_single_param)
     notifly::default_notifly().remove_all_observers(fourth_poster);
 
     // Setup: register responder observer that listens for the request
-    const auto responder_id = notifly::default_notifly().add_observer(third_poster, []() {
+    const auto responder_id = notifly::default_notifly().add_observer(third_poster, []
+    {
         // Simulate some processing
         std::this_thread::sleep_for(std::chrono::milliseconds(50));
         // Send response on fourth_poster

@@ -497,7 +497,7 @@ TEST(notifly, post_and_wait_single_param)
     });
 
     // Test: post and wait for single string parameter
-    std::tuple<std::string> result;
+    std::string result;
     const auto ret = notifly::default_notifly().post_and_wait(
         third_poster,
         fourth_poster,
@@ -506,7 +506,7 @@ TEST(notifly, post_and_wait_single_param)
     );
 
     ASSERT_EQ(ret, notifly_result::success);
-    ASSERT_EQ(std::get<0>(result), "Hello World");
+    ASSERT_EQ(result, "Hello World");
 
     // Cleanup
     notifly::default_notifly().remove_observer(responder_id);

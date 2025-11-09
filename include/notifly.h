@@ -37,6 +37,7 @@
 #include <memory>
 #include <vector>
 #include <future>
+#include <ranges>
 
 // Windows.h defines min and max as macros, which conflicts with std::min and std::max
 #ifdef min
@@ -47,7 +48,7 @@
 #endif
 
 #define NOTIFLY_VERSION_MAJOR 3
-#define NOTIFLY_VERSION_MINOR 1
+#define NOTIFLY_VERSION_MINOR 2
 #define NOTIFLY_VERSION_PATCH 0
 
 #define NOTIFLY_VERSION (NOTIFLY_VERSION_MAJOR << 16 | NOTIFLY_VERSION_MINOR << 8 | NOTIFLY_VERSION_PATCH)
@@ -304,20 +305,16 @@ public:
         ResultTuple& a_result,
         PostArgs... post_args)
     {
-        // Create a promise/future for synchronization wrapped in shared_ptr
+        // Create promise/future for synchronization
         auto response_promise = std::make_shared<std::promise<ResultTuple>>();
         std::future<ResultTuple> response_future = response_promise->get_future();
 
-        // Register temporary observer for the response notification
-        // Use a helper to extract types from ResultTuple and create the observer
-        int observer_id = add_observer_for_tuple<ResultTuple>(a_wait_notification, response_promise);
+        // Register temporary observer for the response
+        int observer_id = add_response_observer(a_wait_notification, response_promise);
 
-        if (observer_id < 0)
-        {
-            return static_cast<notifly_result>(observer_id);
-        }
+        if (observer_id < 0) return static_cast<notifly_result>(observer_id);
 
-        // Post the initial notification
+        // Post the request
         int post_result = post_notification(a_post_notification, std::forward<PostArgs>(post_args)...);
 
         if (post_result < 0)
@@ -338,12 +335,8 @@ public:
         // Remove the temporary observer
         remove_observer(observer_id);
 
-        if (status == std::future_status::timeout)
-        {
-            return notifly_result::timeout;
-        }
+        if (status == std::future_status::timeout) return notifly_result::timeout;
 
-        // Get the result
         a_result = response_future.get();
         return notifly_result::success;
     }
@@ -359,24 +352,39 @@ public:
 
 private:
     /**
-     * @brief Helper to add observer for a specific tuple type - extracts types from the tuple
+     * @brief Helper trait to detect tuple types
      */
-    template<typename Tuple, typename... Args>
-    int add_observer_for_tuple_impl(const int a_notification, std::shared_ptr<std::promise<Tuple>> response_promise, std::tuple<Args...>*)
-    {
-        // Create a callback function that accepts the tuple arguments
-        std::function<void(Args...)> callback = [response_promise](Args... args) {
-            response_promise->set_value(std::make_tuple(args...));
-        };
+    template<typename>
+    struct is_tuple : std::false_type {};
 
-        return add_observer(a_notification, callback);
+    template<typename... Args>
+    struct is_tuple<std::tuple<Args...>> : std::true_type {};
+
+    /**
+     * @brief Add observer for response - specialization for tuple types
+     */
+    template<typename... Args>
+    int add_response_observer(const int a_notification, std::shared_ptr<std::promise<std::tuple<Args...>>> promise)
+    {
+        // Tuple response
+        return add_observer(a_notification, [promise](Args... args)
+        {
+            promise->set_value(std::make_tuple(args...));
+        });
     }
 
-    template<typename Tuple>
-    int add_observer_for_tuple(const int a_notification, std::shared_ptr<std::promise<Tuple>> response_promise)
+    /**
+     * @brief Add observer for response - for single types using SFINAE
+     */
+    template<typename T>
+    std::enable_if_t<!is_tuple<T>::value, int>
+    add_response_observer(const int a_notification, std::shared_ptr<std::promise<T>> promise)
     {
-        // Extract types from tuple and delegate to implementation
-        return add_observer_for_tuple_impl(a_notification, response_promise, static_cast<Tuple*>(nullptr));
+        // Single value response
+        return add_observer(a_notification, [promise](T value)
+        {
+            promise->set_value(value);
+        });
     }
 
     // Structure to group observer data for a notification
@@ -416,11 +424,8 @@ private:
         {
             if(a_async)
             {
-#ifdef __APPLE__
-                auto task_thread = std::make_shared<std::thread>([callback = observer.m_callback, p = payload]() mutable {
-#else
-                auto task_thread = std::make_shared<std::jthread>([callback = observer.m_callback, p = payload]() {
-#endif
+                auto task_thread = std::make_shared<std::jthread>([callback = observer.m_callback, p = payload]
+                {
                     callback(p);
                 });
 
@@ -478,14 +483,11 @@ private:
     void wait_for_all_async_tasks()
     {
         std::lock_guard lock(m_tasks_mutex);
-        for (auto& [observer_id, tasks] : m_async_tasks)
+        for (auto &tasks: m_async_tasks | std::views::values)
         {
             for (const auto& task : tasks)
             {
-#ifdef __APPLE__
-                if (task && task->joinable())
-                    task->join();
-#endif
+                if (task && task->joinable()) task->join();
             }
         }
         m_async_tasks.clear();
@@ -537,11 +539,7 @@ private:
     std::unordered_map<int, ObserverLocation> m_observer_lookup;
 
     // Async tasks management
-#ifdef __APPLE__
-    std::unordered_map<int, std::vector<std::shared_ptr<std::thread>>> m_async_tasks;
-#else
     std::unordered_map<int, std::vector<std::shared_ptr<std::jthread>>> m_async_tasks;
-#endif
     mutable std::mutex m_tasks_mutex;
 
     // ID management

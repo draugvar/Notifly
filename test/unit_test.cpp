@@ -384,3 +384,133 @@ TEST(notifly, delete_no_notification)
     const auto notifly_ptr = new notifly();
     delete notifly_ptr;
 }
+
+TEST(notifly, post_and_wait_success)
+{
+    // Clean up any existing observers to avoid type conflicts
+    notifly::default_notifly().remove_all_observers(poster);
+    notifly::default_notifly().remove_all_observers(second_poster);
+
+    // Setup: register responder observer that listens for the request
+    const auto responder_id = notifly::default_notifly().add_observer(poster, [](int a, int b) {
+        // Simulate some processing
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        // Send response on second_poster
+        notifly::default_notifly().post_notification(second_poster, 42, 100);
+    });
+
+    // Test: post request and wait for response
+    std::tuple<int, int> result;
+    const auto ret = notifly::default_notifly().post_and_wait(
+        poster,          // Send request on this notification
+        second_poster,   // Wait for response on this notification
+        500,             // 500ms timeout
+        result,          // Output parameter
+        1, 2             // Request payload
+    );
+
+    ASSERT_EQ(ret, notifly_result::success);
+    ASSERT_EQ(std::get<0>(result), 42);
+    ASSERT_EQ(std::get<1>(result), 100);
+
+    // Cleanup
+    notifly::default_notifly().remove_observer(responder_id);
+    notifly::default_notifly().remove_all_observers(poster);
+    notifly::default_notifly().remove_all_observers(second_poster);
+}
+
+TEST(notifly, post_and_wait_timeout)
+{
+    // Clean up any existing observers to avoid type conflicts
+    notifly::default_notifly().remove_all_observers(third_poster);
+    notifly::default_notifly().remove_all_observers(fourth_poster);
+
+    // Setup: add a dummy observer on third_poster that receives the request but doesn't respond
+    const auto dummy_observer_id = notifly::default_notifly().add_observer(third_poster,
+        [](const int a, const int b)
+        {
+            // Receive the request but deliberately don't send any response
+            printf("Request received (%d, %d) but not responding\n", a, b);
+        });
+
+    // Test: post request but no one responds, should timeout
+    std::tuple<int, int> result;
+    const auto ret = notifly::default_notifly().post_and_wait(
+        third_poster,    // Send request on this notification
+        fourth_poster,   // Wait for response on this notification (no one listening)
+        100,             // 100ms timeout
+        result,          // Output parameter
+        1, 2             // Request payload
+    );
+
+    ASSERT_EQ(ret, notifly_result::timeout);
+
+    // Cleanup
+    notifly::default_notifly().remove_observer(dummy_observer_id);
+    notifly::default_notifly().remove_all_observers(third_poster);
+    notifly::default_notifly().remove_all_observers(fourth_poster);
+}
+
+TEST(notifly, post_and_wait_with_observer)
+{
+    // Clean up any existing observers to avoid type conflicts
+    notifly::default_notifly().remove_all_observers(poster);
+    notifly::default_notifly().remove_all_observers(second_poster);
+
+    // Setup: add observer that will respond
+    const auto observer_id = notifly::default_notifly().add_observer(poster, [](const int a, const int b) {
+        // Simulate some processing
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        // Send response
+        notifly::default_notifly().post_notification(second_poster, a + b, a * b);
+    });
+
+    // Test: post and wait
+    std::tuple<int, int> result;
+    const auto ret = notifly::default_notifly().post_and_wait(
+        poster,
+        second_poster,
+        200,
+        result,
+        5, 10
+    );
+
+    ASSERT_EQ(ret, notifly_result::success);
+    ASSERT_EQ(std::get<0>(result), 15);  // 5 + 10
+    ASSERT_EQ(std::get<1>(result), 50);  // 5 * 10
+
+    notifly::default_notifly().remove_observer(observer_id);
+}
+
+TEST(notifly, post_and_wait_single_param)
+{
+    // Clean up any existing observers to avoid type conflicts
+    notifly::default_notifly().remove_all_observers(third_poster);
+    notifly::default_notifly().remove_all_observers(fourth_poster);
+
+    // Setup: register responder observer that listens for the request
+    const auto responder_id = notifly::default_notifly().add_observer(third_poster, []() {
+        // Simulate some processing
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        // Send response on fourth_poster
+        notifly::default_notifly().post_notification(fourth_poster, std::string("Hello World"));
+    });
+
+    // Test: post and wait for single string parameter
+    std::tuple<std::string> result;
+    const auto ret = notifly::default_notifly().post_and_wait(
+        third_poster,
+        fourth_poster,
+        200,
+        result
+    );
+
+    ASSERT_EQ(ret, notifly_result::success);
+    ASSERT_EQ(std::get<0>(result), "Hello World");
+
+    // Cleanup
+    notifly::default_notifly().remove_observer(responder_id);
+    notifly::default_notifly().remove_all_observers(third_poster);
+    notifly::default_notifly().remove_all_observers(fourth_poster);
+}
+

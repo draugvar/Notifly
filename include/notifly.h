@@ -47,7 +47,7 @@
 #endif
 
 #define NOTIFLY_VERSION_MAJOR 3
-#define NOTIFLY_VERSION_MINOR 0
+#define NOTIFLY_VERSION_MINOR 1
 #define NOTIFLY_VERSION_PATCH 0
 
 #define NOTIFLY_VERSION (NOTIFLY_VERSION_MAJOR << 16 | NOTIFLY_VERSION_MINOR << 8 | NOTIFLY_VERSION_PATCH)
@@ -61,7 +61,8 @@ enum class notifly_result
     observer_not_found =        -1,
     notification_not_found =    -2,
     payload_type_not_match =    -3,
-    no_more_observer_ids =      -4
+    no_more_observer_ids =      -4,
+    timeout =                   -5
 };
 
 /**
@@ -83,12 +84,12 @@ public:
     /**
      * @brief   Get the observer id.
      */
-    int get_id() const { return m_id; }
+    [[nodiscard]] int get_id() const { return m_id; }
 
     /**
      * @brief   Get the types of the arguments for the callback function.
      */
-    const std::string& get_types() const { return m_types; }
+    [[nodiscard]] const std::string& get_types() const { return m_types; }
 
     // Callback function to be invoked when a notification is posted
     std::function<std::any(std::any)> m_callback;
@@ -287,6 +288,67 @@ public:
     }
 
     /**
+     * @brief                       Post a notification and wait for a response notification with timeout.
+     * @param a_post_notification   The notification you wish to post.
+     * @param a_wait_notification   The notification you wish to wait for.
+     * @param a_timeout_ms          Timeout in milliseconds.
+     * @param a_result              Output parameter to store the result.
+     * @param post_args             The payload associated with the post notification.
+     * @return                      notifly_result::success if response received, notifly_result::timeout if timeout occurred, or other error code.
+     */
+    template<typename ResultTuple, typename ...PostArgs>
+    notifly_result post_and_wait(
+        int a_post_notification,
+        int a_wait_notification,
+        int a_timeout_ms,
+        ResultTuple& a_result,
+        PostArgs... post_args)
+    {
+        // Create a promise/future for synchronization wrapped in shared_ptr
+        auto response_promise = std::make_shared<std::promise<ResultTuple>>();
+        std::future<ResultTuple> response_future = response_promise->get_future();
+
+        // Register temporary observer for the response notification
+        // Use a helper to extract types from ResultTuple and create the observer
+        int observer_id = add_observer_for_tuple<ResultTuple>(a_wait_notification, response_promise);
+
+        if (observer_id < 0)
+        {
+            return static_cast<notifly_result>(observer_id);
+        }
+
+        // Post the initial notification
+        int post_result = post_notification(a_post_notification, std::forward<PostArgs>(post_args)...);
+
+        if (post_result < 0)
+        {
+            remove_observer(observer_id);
+            return static_cast<notifly_result>(post_result);
+        }
+
+        if (post_result == 0)
+        {
+            remove_observer(observer_id);
+            return notifly_result::notification_not_found;
+        }
+
+        // Wait for response with timeout
+        auto status = response_future.wait_for(std::chrono::milliseconds(a_timeout_ms));
+
+        // Remove the temporary observer
+        remove_observer(observer_id);
+
+        if (status == std::future_status::timeout)
+        {
+            return notifly_result::timeout;
+        }
+
+        // Get the result
+        a_result = response_future.get();
+        return notifly_result::success;
+    }
+
+    /**
      * @brief   Get the default global notification center.
      */
     static notifly& default_notifly()
@@ -296,6 +358,27 @@ public:
     }
 
 private:
+    /**
+     * @brief Helper to add observer for a specific tuple type - extracts types from the tuple
+     */
+    template<typename Tuple, typename... Args>
+    int add_observer_for_tuple_impl(const int a_notification, std::shared_ptr<std::promise<Tuple>> response_promise, std::tuple<Args...>*)
+    {
+        // Create a callback function that accepts the tuple arguments
+        std::function<void(Args...)> callback = [response_promise](Args... args) {
+            response_promise->set_value(std::make_tuple(args...));
+        };
+
+        return add_observer(a_notification, callback);
+    }
+
+    template<typename Tuple>
+    int add_observer_for_tuple(const int a_notification, std::shared_ptr<std::promise<Tuple>> response_promise)
+    {
+        // Extract types from tuple and delegate to implementation
+        return add_observer_for_tuple_impl(a_notification, response_promise, static_cast<Tuple*>(nullptr));
+    }
+
     // Structure to group observer data for a notification
     struct NotificationData {
         std::list<notification_observer> observers;

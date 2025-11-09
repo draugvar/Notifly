@@ -107,6 +107,13 @@ set_target_properties(${C_GTEST}
         MSVC_RUNTIME_LIBRARY MultiThreaded$<$<CONFIG:Debug>:Debug>
         )
 
+# Enable CTest
+enable_testing()
+
+# Add tests to CTest
+add_test(NAME UnitTests COMMAND ${UNIT_TEST})
+add_test(NAME CApiTests COMMAND ${C_GTEST})
+
 # Function to copy a file only if it does not exist or is different
 function(move_file source_file destination_dir)
         # Check if the source file exists

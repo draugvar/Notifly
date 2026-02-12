@@ -278,5 +278,8 @@ int main(void) {
     printf("  Failed: %d\n", tests_failed);
     printf("==========================================\n");
 
+    /* Cleanup default instance to prevent memory leaks */
+    notifly_cleanup_default();
+
     return (tests_failed == 0) ? 0 : 1;
 }

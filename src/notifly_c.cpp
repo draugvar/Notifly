@@ -67,6 +67,14 @@ notifly_handle notifly_default(void) {
     return g_default_handle;
 }
 
+void notifly_cleanup_default(void) {
+    std::lock_guard lock(g_default_mutex);
+    if (g_default_handle != nullptr) {
+        delete g_default_handle;
+        g_default_handle = nullptr;
+    }
+}
+
 int notifly_add_observer(notifly_handle handle, int notification_id, notifly_callback callback, void* user_data) {
     if (!handle || !callback) {
         return NOTIFLY_INVALID_HANDLE;

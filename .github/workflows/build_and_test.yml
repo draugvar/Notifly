@@ -49,6 +49,16 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: cmake -B build
 
+      - name: Verify Valgrind Configuration (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: build
+        run: |
+          if ! grep -q "MemoryCheckCommand:.*valgrind" DartConfiguration.tcl; then
+            echo "ERROR: Valgrind was not found by CMake"
+            exit 1
+          fi
+          echo "Valgrind successfully configured"
+
       - name: Run Tests with Valgrind (Linux only)
         if: matrix.os == 'ubuntu-latest'
         working-directory: build

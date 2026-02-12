@@ -66,6 +66,7 @@ typedef enum {
 NOTIFLY_C_API notifly_handle notifly_create(void);
 NOTIFLY_C_API void notifly_destroy(notifly_handle handle);
 NOTIFLY_C_API notifly_handle notifly_default(void);
+NOTIFLY_C_API void notifly_cleanup_default(void);  /* Cleanup default instance (for tests/shutdown) */
 
 /* Observer management */
 NOTIFLY_C_API int notifly_add_observer(notifly_handle handle, int notification_id, notifly_callback callback, void* user_data);

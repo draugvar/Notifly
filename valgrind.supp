@@ -1,0 +1,19 @@
+# Valgrind suppressions file for Notifly
+# This file contains suppressions for known false positives
+
+# Suppress C++ standard library false positives
+{
+   std_string_false_positive
+   Memcheck:Leak
+   ...
+   fun:*std*string*
+}
+
+# Suppress pthread false positives
+{
+   pthread_create_false_positive
+   Memcheck:Leak
+   ...
+   fun:pthread_create*
+}
+

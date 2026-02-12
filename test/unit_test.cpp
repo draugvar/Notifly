@@ -1,11 +1,12 @@
-//
-// Created by Salvatore Rivieccio
-//
 #include <gtest/gtest.h>
 #include <future>
-
+#include <atomic>
+#include <chrono>
+#include <thread>
 #include "notifly.h"
 #include "unit_test.h"
+
+using namespace std::chrono_literals;
 
 TEST(notifly, version)
 {
@@ -517,5 +518,236 @@ TEST(notifly, post_and_wait_single_param)
     notifly::default_notifly().remove_observer(responder_id);
     notifly::default_notifly().remove_all_observers(third_poster);
     notifly::default_notifly().remove_all_observers(fourth_poster);
+}
+
+enum TestNotification : int
+{
+    kTestNotification = 1000,
+    kTestNotification2 = 1001,
+};
+
+// Test 1: Completed async tasks are cleaned up on next post
+TEST(NotiflyMemoryLeak, AsyncTaskCleanup)
+{
+    notifly nf;
+    std::atomic call_count{0};
+
+    nf.add_observer(kTestNotification, [&call_count](int) {
+        call_count.fetch_add(1, std::memory_order_relaxed);
+    });
+
+    // Post 100 async notifications
+    for (int i = 0; i < 100; ++i)
+    {
+        nf.post_notification_async(kTestNotification, i);
+    }
+
+    // Wait for all tasks to complete
+    std::this_thread::sleep_for(500ms);
+    EXPECT_EQ(call_count.load(), 100);
+
+    // Post one more to trigger cleanup
+    nf.post_notification_async(kTestNotification, 999);
+    std::this_thread::sleep_for(50ms);
+
+    // After cleanup, pending count should be very small (just the last one, or 0 if it completed)
+    EXPECT_LE(nf.pending_async_task_count(), 1u);
+}
+
+// Test 2: Async tasks do not grow unbounded under sustained load
+TEST(NotiflyMemoryLeak, AsyncTasksDoNotGrowUnbounded)
+{
+    notifly nf;
+    std::atomic call_count{0};
+
+    nf.add_observer(kTestNotification, [&call_count](int) {
+        call_count.fetch_add(1, std::memory_order_relaxed);
+    });
+
+    // Post 1000 async notifications with small delays
+    for (int i = 0; i < 1000; ++i)
+    {
+        nf.post_notification_async(kTestNotification, i);
+        if (i % 10 == 0)
+            std::this_thread::sleep_for(1ms);
+    }
+
+    // The task count should stay bounded - completed tasks are cleaned on each post
+    // Allow generous upper bound, but it should not be anywhere near 1000
+    EXPECT_LT(nf.pending_async_task_count(), 100u);
+}
+
+// Test 3: Destructor cleans up all tasks without crashing or hanging
+TEST(NotiflyMemoryLeak, DestructorCleansUpAllTasks)
+{
+    auto done = std::make_shared<std::atomic<bool>>(false);
+
+    std::thread test_thread([done]() {
+        auto nf = std::make_unique<notifly>();
+        std::atomic call_count{0};
+
+        nf->add_observer(kTestNotification, [&call_count](int) {
+            std::this_thread::sleep_for(10ms);
+            call_count.fetch_add(1, std::memory_order_relaxed);
+        });
+
+        for (int i = 0; i < 20; ++i)
+        {
+            nf->post_notification_async(kTestNotification, i);
+        }
+
+        // Destroy while tasks may still be running - should join cleanly
+        nf.reset();
+        done->store(true, std::memory_order_release);
+    });
+
+    // Guard against hang: wait up to 10 seconds
+    const auto start = std::chrono::steady_clock::now();
+    while (!done->load(std::memory_order_acquire))
+    {
+        if (std::chrono::steady_clock::now() - start > 10s)
+        {
+            FAIL() << "Destructor appears to have hung";
+        }
+        std::this_thread::sleep_for(50ms);
+    }
+
+    test_thread.join();
+}
+
+// Test 4: Synchronous notifications still work correctly
+TEST(NotiflyMemoryLeak, SyncNotificationsStillWork)
+{
+    notifly nf;
+    int received_value = 0;
+
+    nf.add_observer(kTestNotification, [&received_value](const int value) {
+        received_value = value;
+    });
+
+    nf.post_notification(kTestNotification, 42);
+    EXPECT_EQ(received_value, 42);
+
+    nf.post_notification(kTestNotification, 100);
+    EXPECT_EQ(received_value, 100);
+}
+
+// Test 5: Removing an observer with pending async tasks doesn't crash
+TEST(NotiflyMemoryLeak, RemoveObserverWithPendingAsyncTasks)
+{
+    notifly nf;
+    std::atomic call_count{0};
+
+    const int observer_id = nf.add_observer(kTestNotification, [&call_count](int) {
+        std::this_thread::sleep_for(50ms);
+        call_count.fetch_add(1, std::memory_order_relaxed);
+    });
+
+    // Post async notifications to a slow observer
+    for (int i = 0; i < 5; ++i)
+    {
+        nf.post_notification_async(kTestNotification, i);
+    }
+
+    // Remove observer while tasks are still running - should wait and clean up
+    const int result = nf.remove_observer(observer_id);
+    EXPECT_EQ(result, static_cast<int>(notifly_result::success));
+
+    // All tasks should have completed since remove_observer waits
+    EXPECT_EQ(call_count.load(), 5);
+}
+
+// Test 6: Multiple observers on the same notification both get called
+TEST(NotiflyMemoryLeak, MultipleObserversSameNotification)
+{
+    notifly nf;
+    std::atomic count_a{0};
+    std::atomic count_b{0};
+
+    nf.add_observer(kTestNotification, [&count_a](int) {
+        count_a.fetch_add(1, std::memory_order_relaxed);
+    });
+
+    nf.add_observer(kTestNotification, [&count_b](int) {
+        count_b.fetch_add(1, std::memory_order_relaxed);
+    });
+
+    for (int i = 0; i < 10; ++i)
+    {
+        nf.post_notification_async(kTestNotification, i);
+    }
+
+    // Wait for completion
+    std::this_thread::sleep_for(500ms);
+
+    EXPECT_EQ(count_a.load(), 10);
+    EXPECT_EQ(count_b.load(), 10);
+}
+
+// Test 7: High-frequency async dispatch stays bounded (customer regression scenario)
+TEST(NotiflyMemoryLeak, HighFrequencyAsyncDispatch)
+{
+    notifly nf;
+    std::atomic call_count{0};
+
+    nf.add_observer(kTestNotification, [&call_count](int) {
+        call_count.fetch_add(1, std::memory_order_relaxed);
+    });
+
+    // Simulate the customer scenario: tight loop posting async notifications
+    constexpr int total_posts = 5000;
+    size_t max_pending = 0;
+
+    for (int i = 0; i < total_posts; ++i)
+    {
+        nf.post_notification_async(kTestNotification, i);
+
+        // Periodically check the pending count
+        if (i % 100 == 0)
+        {
+            size_t current = nf.pending_async_task_count();
+            max_pending = std::max(max_pending, current);
+        }
+    }
+
+    // The max pending should stay bounded - should never approach total_posts
+    EXPECT_LT(max_pending, 500u)
+        << "Pending task count reached " << max_pending
+        << " which suggests completed tasks are not being reclaimed";
+
+    // Wait for everything to finish
+    std::this_thread::sleep_for(1s);
+    EXPECT_EQ(call_count.load(), total_posts);
+}
+
+// Test 8: Completed tasks are reclaimed after triggering cleanup
+TEST(NotiflyMemoryLeak, CompletedTasksAreReclaimed)
+{
+    notifly nf;
+    std::atomic call_count{0};
+
+    nf.add_observer(kTestNotification, [&call_count](int) {
+        call_count.fetch_add(1, std::memory_order_relaxed);
+    });
+
+    // Post N async tasks
+    constexpr int N = 50;
+    for (int i = 0; i < N; ++i)
+    {
+        nf.post_notification_async(kTestNotification, i);
+    }
+
+    // Wait for all tasks to complete
+    std::this_thread::sleep_for(500ms);
+    EXPECT_EQ(call_count.load(), N);
+
+    // Post one more to trigger cleanup of completed tasks
+    nf.post_notification_async(kTestNotification, 999);
+    std::this_thread::sleep_for(50ms);
+
+    // Should only have ~1 task (the most recent one, possibly already completed)
+    const size_t count = nf.pending_async_task_count();
+    EXPECT_LE(count, 1u)
+        << "Expected at most 1 pending task after cleanup, got " << count;
 }
 

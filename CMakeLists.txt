@@ -97,6 +97,17 @@ set_target_properties(${C_API_TEST}
 # Enable CTest
 enable_testing()
 
+# Configure Valgrind for memory checks
+find_program(VALGRIND_EXECUTABLE valgrind)
+if(VALGRIND_EXECUTABLE)
+    set(MEMORYCHECK_COMMAND ${VALGRIND_EXECUTABLE})
+    set(MEMORYCHECK_COMMAND_OPTIONS "--leak-check=full --show-leak-kinds=all --track-origins=yes --error-exitcode=1")
+    if(EXISTS "${CMAKE_SOURCE_DIR}/valgrind.supp")
+        set(MEMORYCHECK_COMMAND_OPTIONS "${MEMORYCHECK_COMMAND_OPTIONS} --suppressions=${CMAKE_SOURCE_DIR}/valgrind.supp")
+    endif()
+    include(CTest)
+endif()
+
 # Add tests to CTest
 add_test(NAME UnitTests COMMAND ${UNIT_TEST})
 add_test(NAME CApiTests COMMAND ${C_API_TEST})

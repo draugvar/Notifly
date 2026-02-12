@@ -40,3 +40,14 @@ jobs:
       - name: Run Tests
         working-directory: build
         run: ctest --build-config Release --output-on-failure --verbose
+
+      - name: Install Valgrind (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y valgrind
+
+      - name: Run Tests with Valgrind (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: build
+        run: |
+          ctest --build-config Release --output-on-failure --verbose -T memcheck
+

@@ -45,6 +45,10 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install -y valgrind
 
+      - name: Reconfigure CMake with Valgrind (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        run: cmake -B build
+
       - name: Run Tests with Valgrind (Linux only)
         if: matrix.os == 'ubuntu-latest'
         working-directory: build

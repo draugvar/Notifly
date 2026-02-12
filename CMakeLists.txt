@@ -95,7 +95,7 @@ set_target_properties(${C_API_TEST}
         )
 
 # Enable CTest
-enable_testing()
+include(CTest)
 
 # Configure Valgrind for memory checks
 find_program(VALGRIND_EXECUTABLE valgrind)
@@ -105,7 +105,6 @@ if(VALGRIND_EXECUTABLE)
     if(EXISTS "${CMAKE_SOURCE_DIR}/valgrind.supp")
         set(MEMORYCHECK_COMMAND_OPTIONS "${MEMORYCHECK_COMMAND_OPTIONS} --suppressions=${CMAKE_SOURCE_DIR}/valgrind.supp")
     endif()
-    include(CTest)
 endif()
 
 # Add tests to CTest

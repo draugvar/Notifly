@@ -1,0 +1,59 @@
+# Valgrind suppressions file for Notifly
+# This file contains suppressions for known false positives
+
+# Suppress C++ standard library false positives
+{
+   std_string_false_positive
+   Memcheck:Leak
+   ...
+   fun:*std*string*
+}
+
+# Suppress pthread false positives
+{
+   pthread_create_false_positive
+   Memcheck:Leak
+   ...
+   fun:pthread_create*
+}
+
+# Suppress C++ static initialization (local static variables)
+{
+   static_initialization
+   Memcheck:Leak
+   ...
+   fun:*default_notifly*
+}
+
+# Suppress std::mutex and other threading primitives
+{
+   std_mutex_initialization
+   Memcheck:Leak
+   ...
+   fun:*mutex*
+}
+
+# Suppress C++ standard library containers (they use static memory)
+{
+   std_containers
+   Memcheck:Leak
+   ...
+   fun:*unordered_map*
+}
+
+{
+   std_containers_vector
+   Memcheck:Leak
+   ...
+   fun:*vector*
+}
+
+# Suppress C++ exception handling infrastructure
+{
+   cxx_exception_handling
+   Memcheck:Leak
+   ...
+   fun:*__cxa_*
+}
+
+

@@ -94,8 +94,24 @@ set_target_properties(${C_API_TEST}
         LINKER_LANGUAGE C
         )
 
+# Configure Valgrind for memory checks (must be BEFORE include(CTest))
+find_program(VALGRIND_EXECUTABLE valgrind)
+if(VALGRIND_EXECUTABLE)
+    set(MEMORYCHECK_COMMAND ${VALGRIND_EXECUTABLE})
+    set(CTEST_MEMORYCHECK_COMMAND ${VALGRIND_EXECUTABLE})
+
+    # Show only definite and possible leaks, not reachable memory (which may be held by static objects)
+    set(MEMORYCHECK_COMMAND_OPTIONS "--leak-check=full --show-leak-kinds=definite,possible --track-origins=yes --error-exitcode=1")
+    set(CTEST_MEMORYCHECK_COMMAND_OPTIONS "--leak-check=full --show-leak-kinds=definite,possible --track-origins=yes --error-exitcode=1")
+
+    if(EXISTS "${CMAKE_SOURCE_DIR}/valgrind.supp")
+        set(MEMORYCHECK_SUPPRESSIONS_FILE "${CMAKE_SOURCE_DIR}/valgrind.supp")
+        set(CTEST_MEMORYCHECK_SUPPRESSIONS_FILE "${CMAKE_SOURCE_DIR}/valgrind.supp")
+    endif()
+endif()
+
 # Enable CTest
-enable_testing()
+include(CTest)
 
 # Add tests to CTest
 add_test(NAME UnitTests COMMAND ${UNIT_TEST})

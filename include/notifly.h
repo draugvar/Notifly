@@ -37,6 +37,7 @@
 #include <memory>
 #include <vector>
 #include <future>
+#include <atomic>
 #include <ranges>
 
 // Windows.h defines min and max as macros, which conflicts with std::min and std::max
@@ -48,7 +49,7 @@
 #endif
 
 #define NOTIFLY_VERSION_MAJOR 3
-#define NOTIFLY_VERSION_MINOR 4
+#define NOTIFLY_VERSION_MINOR 5
 #define NOTIFLY_VERSION_PATCH 0
 
 #define NOTIFLY_VERSION (NOTIFLY_VERSION_MAJOR << 16 | NOTIFLY_VERSION_MINOR << 8 | NOTIFLY_VERSION_PATCH)
@@ -301,7 +302,7 @@ public:
     notifly_result post_and_wait(
         int a_post_notification,
         int a_wait_notification,
-        int a_timeout_ms,
+        const int a_timeout_ms,
         ResultTuple& a_result,
         PostArgs... post_args)
     {
@@ -350,6 +351,18 @@ public:
         return instance;
     }
 
+    /**
+     * @brief   Get the number of pending async tasks (useful for testing).
+     */
+    size_t pending_async_task_count() const
+    {
+        std::lock_guard lock(m_tasks_mutex);
+        size_t count = 0;
+        for (const auto &tasks: m_async_tasks | std::views::values)
+            count += tasks.size();
+        return count;
+    }
+
 private:
     /**
      * @brief Helper trait to detect tuple types
@@ -388,14 +401,23 @@ private:
     }
 
     // Structure to group observer data for a notification
-    struct NotificationData {
+    struct NotificationData
+    {
         std::list<notification_observer> observers;
     };
 
     // Structure to store observer location info for quick lookup
-    struct ObserverLocation {
+    struct ObserverLocation
+    {
         int notification_id{};
         std::list<notification_observer>::iterator iterator;
+    };
+
+    // Structure to track an async task and its completion status
+    struct AsyncTask
+    {
+        std::shared_ptr<std::jthread> thread;
+        std::shared_ptr<std::atomic<bool>> completed;
     };
 
     // Helper method to post a notification
@@ -424,14 +446,20 @@ private:
         {
             if(a_async)
             {
-                auto task_thread = std::make_shared<std::jthread>([callback = observer.m_callback, p = payload]
-                {
-                    callback(p);
-                });
-
-                // Store the thread
+                auto completed_flag = std::make_shared<std::atomic<bool>>(false);
+                auto task_thread = std::make_shared<std::jthread>(
+                    [callback = observer.m_callback, p = payload, completed_flag]()
+                    {
+                        callback(p);
+                        completed_flag->store(true, std::memory_order_release);
+                    });
                 std::lock_guard task_lock(m_tasks_mutex);
-                m_async_tasks[observer.get_id()].push_back(task_thread);
+                auto& tasks = m_async_tasks[observer.get_id()];
+                // Clean up completed tasks to prevent unbounded growth
+                std::erase_if(tasks, [](const AsyncTask& t) {
+                    return t.completed->load(std::memory_order_acquire);
+                });
+                tasks.push_back({task_thread, completed_flag});
             }
             else
             {
@@ -447,12 +475,10 @@ private:
         std::lock_guard task_lock(m_tasks_mutex);
         if (const auto it = m_async_tasks.find(observer_id); it != m_async_tasks.end())
         {
-            for (const auto& task : it->second)
+            for (const auto&[thread, completed] : it->second)
             {
-#ifdef __APPLE__
-                if (task && task->joinable())
-                    task->join();
-#endif
+                if (thread && thread->joinable())
+                    thread->join();
             }
             m_async_tasks.erase(it);
         }
@@ -462,7 +488,7 @@ private:
     void wait_for_notification_tasks(const int notification_id)
     {
         std::vector<int> observer_ids_to_wait;
-        
+
         // First gather all observer IDs for this notification
         for (const auto& [id, location] : m_observer_lookup)
         {
@@ -471,7 +497,7 @@ private:
                 observer_ids_to_wait.push_back(id);
             }
         }
-        
+
         // Now wait for each observer's tasks
         for (const int observer_id : observer_ids_to_wait)
         {
@@ -485,9 +511,10 @@ private:
         std::lock_guard lock(m_tasks_mutex);
         for (auto &tasks: m_async_tasks | std::views::values)
         {
-            for (const auto& task : tasks)
+            for (const auto&[thread, completed] : tasks)
             {
-                if (task && task->joinable()) task->join();
+                if (thread && thread->joinable())
+                    thread->join();
             }
         }
         m_async_tasks.clear();
@@ -539,7 +566,7 @@ private:
     std::unordered_map<int, ObserverLocation> m_observer_lookup;
 
     // Async tasks management
-    std::unordered_map<int, std::vector<std::shared_ptr<std::jthread>>> m_async_tasks;
+    std::unordered_map<int, std::vector<AsyncTask>> m_async_tasks;
     mutable std::mutex m_tasks_mutex;
 
     // ID management
@@ -552,4 +579,3 @@ private:
     // Default notification center instance
     static std::shared_ptr<notifly> m_default_center;
 };
-

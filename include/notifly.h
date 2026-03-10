@@ -39,6 +39,7 @@
 #include <future>
 #include <atomic>
 #include <ranges>
+#include <cstdio>
 
 // Windows.h defines min and max as macros, which conflicts with std::min and std::max
 #ifdef min
@@ -46,6 +47,27 @@
 #endif
 #ifdef max
 #undef max
+#endif
+
+// Debug logging helper — prints thread-ID tagged notifly events on stdout.
+// Controlled at compile time: define NOTIFLY_DEBUG_LOG 0 to silence.
+#ifndef NOTIFLY_DEBUG_LOG
+#  define NOTIFLY_DEBUG_LOG 1
+#endif
+
+#ifdef _WIN32
+#  include <Windows.h>
+#  define NOTIFLY_TID() ((unsigned long)GetCurrentThreadId())
+#else
+#  include <pthread.h>
+#  define NOTIFLY_TID() ((unsigned long)pthread_self())
+#endif
+
+#if NOTIFLY_DEBUG_LOG
+#  define NOTIFLY_LOG(fmt, ...) \
+       do { printf("[NOTIFLY tid=%lu] " fmt "\n", NOTIFLY_TID(), ##__VA_ARGS__); fflush(stdout); } while(0)
+#else
+#  define NOTIFLY_LOG(fmt, ...) ((void)0)
 #endif
 
 #define NOTIFLY_VERSION_MAJOR 3
@@ -363,6 +385,16 @@ public:
         return count;
     }
 
+    /**
+     * @brief   Wait for ALL pending async tasks to complete (drain the queue).
+     *          Call this before deleting an object that owns observers to ensure
+     *          no in-flight callbacks are still running.
+     */
+    void flush_async()
+    {
+        wait_for_all_async_tasks();
+    }
+
 private:
     /**
      * @brief Helper trait to detect tuple types
@@ -447,11 +479,17 @@ private:
             if(a_async)
             {
                 auto completed_flag = std::make_shared<std::atomic<bool>>(false);
+                const int obs_id   = observer.get_id();
+                const int notif_id = a_notification;
+                NOTIFLY_LOG("SPAWN  jthread obs=%d notif=%d", obs_id, notif_id);
                 auto task_thread = std::make_shared<std::jthread>(
-                    [callback = observer.m_callback, p = payload, completed_flag]()
+                    [callback = observer.m_callback, p = payload, completed_flag,
+                     obs_id, notif_id]()
                     {
+                        NOTIFLY_LOG("START  jthread obs=%d notif=%d", obs_id, notif_id);
                         callback(p);
                         completed_flag->store(true, std::memory_order_release);
+                        NOTIFLY_LOG("FINISH jthread obs=%d notif=%d", obs_id, notif_id);
                     });
                 std::lock_guard task_lock(m_tasks_mutex);
                 auto& tasks = m_async_tasks[observer.get_id()];
@@ -475,12 +513,21 @@ private:
         std::lock_guard task_lock(m_tasks_mutex);
         if (const auto it = m_async_tasks.find(observer_id); it != m_async_tasks.end())
         {
+            NOTIFLY_LOG("WAIT   %zu task(s) for obs=%d", it->second.size(), observer_id);
             for (const auto&[thread, completed] : it->second)
             {
                 if (thread && thread->joinable())
+                {
+                    NOTIFLY_LOG("JOIN   jthread obs=%d", observer_id);
                     thread->join();
+                    NOTIFLY_LOG("JOINED jthread obs=%d", observer_id);
+                }
             }
             m_async_tasks.erase(it);
+        }
+        else
+        {
+            NOTIFLY_LOG("WAIT   obs=%d — no tasks pending", observer_id);
         }
     }
 

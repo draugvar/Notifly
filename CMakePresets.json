@@ -1,0 +1,80 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 16, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "cpp",
+      "displayName": "C++ Backend",
+      "description": "Build with the original C++20 header-only implementation",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/cpp",
+      "cacheVariables": {
+        "NOTIFLY_BACKEND": "cpp",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "cpp-debug",
+      "displayName": "C++ Backend (Debug)",
+      "description": "Debug build with the C++ implementation",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/cpp-debug",
+      "cacheVariables": {
+        "NOTIFLY_BACKEND": "cpp",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    },
+    {
+      "name": "rust",
+      "displayName": "Rust Backend",
+      "description": "Build with the Rust implementation via Corrosion + cbindgen",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/rust",
+      "cacheVariables": {
+        "NOTIFLY_BACKEND": "rust",
+        "CMAKE_BUILD_TYPE": "Release"
+      }
+    },
+    {
+      "name": "rust-debug",
+      "displayName": "Rust Backend (Debug)",
+      "description": "Debug build with the Rust implementation",
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/build/rust-debug",
+      "cacheVariables": {
+        "NOTIFLY_BACKEND": "rust",
+        "CMAKE_BUILD_TYPE": "Debug"
+      }
+    }
+  ],
+  "buildPresets": [
+    {
+      "name": "cpp",
+      "configurePreset": "cpp"
+    },
+    {
+      "name": "cpp-debug",
+      "configurePreset": "cpp-debug"
+    },
+    {
+      "name": "rust",
+      "configurePreset": "rust"
+    },
+    {
+      "name": "rust-debug",
+      "configurePreset": "rust-debug"
+    }
+  ],
+  "testPresets": [
+    {
+      "name": "cpp",
+      "configurePreset": "cpp",
+      "output": { "outputOnFailure": true }
+    },
+    {
+      "name": "rust",
+      "configurePreset": "rust",
+      "output": { "outputOnFailure": true }
+    }
+  ]
+}

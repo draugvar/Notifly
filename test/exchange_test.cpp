@@ -371,6 +371,42 @@ TEST(exchange, a_healthy_set_of_subscriptions_reports_success)
 }
 
 // ---------------------------------------------------------------------------
+// capture() is what post_and_wait() is built on: on() plus writing the first
+// delivery straight into a variable instead of a handler. It is public on its
+// own, for a caller building a multi-alternative exchange who wants that
+// shorthand for one of the branches without writing out the lambda.
+// ---------------------------------------------------------------------------
+
+TEST(exchange, capture_writes_the_first_delivery_into_a_single_value)
+{
+    notifly center;
+    int status = -1;
+
+    notifly::exchange ex(center);
+    ex.capture(kStatus, status);
+
+    center.post_notification(kStatus, 7);
+
+    EXPECT_EQ(ex.wait(0ms), kStatus);
+    EXPECT_EQ(status, 7);
+}
+
+TEST(exchange, capture_writes_a_multi_argument_delivery_into_a_tuple)
+{
+    notifly center;
+    std::tuple<int, std::string> job;
+
+    notifly::exchange ex(center);
+    ex.capture(kJobComplete, job);
+
+    center.post_notification(kJobComplete, 42, std::string("ticket-42"));
+
+    EXPECT_EQ(ex.wait(0ms), kJobComplete);
+    EXPECT_EQ(std::get<0>(job), 42);
+    EXPECT_EQ(std::get<1>(job), "ticket-42");
+}
+
+// ---------------------------------------------------------------------------
 // post_and_wait() rides on the same machinery, so it inherits the guard.
 // ---------------------------------------------------------------------------
 

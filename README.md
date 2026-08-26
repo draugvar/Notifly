@@ -134,6 +134,16 @@ That covers the shapes a single request/reply pair cannot:
 | A reply streamed in pieces of unstated length | return `notifly_verdict::keep`, end with `drain(quiet, deadline)` |
 | Silence is the successful outcome | `silent_for(window)` |
 | Nothing to post — waiting on an external event | subscribe and `wait()`, post nothing |
+| One of several alternatives is a plain value, not worth a handler | `capture(id, out)` — `out` is a value or a `std::tuple` |
+
+`capture()` is what `post_and_wait()` is built on internally; it is also public on its own, for a branch of a
+multi-alternative exchange that just needs the payload and nothing else:
+
+```C++
+notifly::exchange ex(notifly::default_notifly());
+int status = -1;
+ex.capture(STATUS_ID, status);   // instead of ex.on<int>(STATUS_ID, [&](int v) { status = v; return notifly_verdict::done; })
+```
 
 Once a handler returns `done` the exchange is complete and later deliveries are ignored, so a sender that repeats itself
 cannot disturb what the winning handler stored. The destructor unsubscribes; never destroy an exchange from inside a

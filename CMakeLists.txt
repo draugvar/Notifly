@@ -53,7 +53,7 @@ set_target_properties(gtest_main PROPERTIES MSVC_RUNTIME_LIBRARY MultiThreaded$<
 
 # 'Unit_Tests_run' is the target name
 # 'UNIT_SOURCE' are source files with tests
-file(GLOB UNIT_SOURCE test/unit_test.cpp test/unit_test.h src/*.cpp include/*.h)
+file(GLOB UNIT_SOURCE test/unit_test.cpp test/unit_test.h test/exchange_test.cpp src/*.cpp include/*.h)
 
 set(UNIT_TEST notifly_unit_test)
 add_executable(${UNIT_TEST} ${UNIT_SOURCE})
@@ -66,6 +66,19 @@ target_link_libraries(${UNIT_TEST} PRIVATE
 set_target_properties(${UNIT_TEST}
         PROPERTIES
         OUTPUT_NAME ${UNIT_TEST}
+        MSVC_RUNTIME_LIBRARY MultiThreaded$<$<CONFIG:Debug>:Debug>
+        )
+
+# Exchange example
+set(EXCHANGE_EXAMPLE notifly_exchange_example)
+add_executable(${EXCHANGE_EXAMPLE} example/exchange_example.cpp)
+target_include_directories(${EXCHANGE_EXAMPLE} PRIVATE include)
+target_compile_features(${EXCHANGE_EXAMPLE} PUBLIC cxx_std_20)
+target_link_libraries(${EXCHANGE_EXAMPLE} PRIVATE ${CMAKE_THREAD_LIBS_INIT})
+set_target_properties(${EXCHANGE_EXAMPLE}
+        PROPERTIES
+        OUTPUT_NAME ${EXCHANGE_EXAMPLE}
+        LINKER_LANGUAGE CXX
         MSVC_RUNTIME_LIBRARY MultiThreaded$<$<CONFIG:Debug>:Debug>
         )
 

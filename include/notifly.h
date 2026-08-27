@@ -210,14 +210,14 @@ public:
         };
 
         // Add observer to appropriate lists
-        auto&[observers] = m_observers[a_notification];
-        observers.push_back(observer);
+        auto& obs = m_observers[a_notification].observers;
+        obs.push_back(std::move(observer));
 
         // Store reference to the observer for quick lookup by ID
         m_observer_lookup[id] =
         {
             a_notification,
-            --observers.end()
+            --obs.end()
         };
 
         return id;

@@ -210,14 +210,14 @@ public:
         };
 
         // Add observer to appropriate lists
-        auto&[observers] = m_observers[a_notification];
-        observers.push_back(observer);
+        auto& obs = m_observers[a_notification].observers;
+        obs.push_back(std::move(observer));
 
         // Store reference to the observer for quick lookup by ID
         m_observer_lookup[id] =
         {
             a_notification,
-            --observers.end()
+            --obs.end()
         };
 
         return id;
@@ -629,43 +629,63 @@ private:
         // Create payload tuple
         auto payload = std::make_any<std::tuple<Args...>>(std::make_tuple(args...));
 
-        // Check notification and type compatibility
-        std::lock_guard lock(m_mutex);
-
-        auto it = m_observers.find(a_notification);
-        if(it == m_observers.end())
-            return static_cast<int>(notifly_result::notification_not_found);
-
-        const auto& observer_list = it->second.observers;
-        if(observer_list.empty() || observer_list.front().get_types() != types)
-            return static_cast<int>(notifly_result::payload_type_not_match);
-
-        // Notify all observers
-        for(const auto& observer : observer_list)
+        // Collect the synchronous callbacks under the lock, then run them without it.
+        //
+        // Invoking them here, while m_mutex is held, makes one observer's work everybody's
+        // problem: nothing else can post a notification until it returns. A caller that posts
+        // from several independent sources -- separate devices sharing one notification centre,
+        // say -- then has them serialise on this mutex, and a handler that blocks stalls sources
+        // it knows nothing about. Worse, a blocking call that waits for a reply delivered through
+        // this same centre cannot be satisfied while another observer is running, so it waits out
+        // its whole timeout for no reason.
+        //
+        // The callbacks are copied, so removing an observer while its callback is in flight does
+        // not pull the ground out from under it.
+        std::vector<std::function<std::any(std::any)>> sync_callbacks;
+        std::size_t observer_count = 0;
         {
-            if(a_async)
+            std::lock_guard lock(m_mutex);
+
+            auto it = m_observers.find(a_notification);
+            if(it == m_observers.end())
+                return static_cast<int>(notifly_result::notification_not_found);
+
+            const auto& observer_list = it->second.observers;
+            if(observer_list.empty() || observer_list.front().get_types() != types)
+                return static_cast<int>(notifly_result::payload_type_not_match);
+
+            observer_count = observer_list.size();
+
+            for(const auto& observer : observer_list)
             {
-                auto completed_flag = std::make_shared<std::atomic<bool>>(false);
-                auto task_thread = std::make_shared<std::jthread>(
-                    [callback = observer.m_callback, p = payload, completed_flag]()
-                    {
-                        callback(p);
-                        completed_flag->store(true, std::memory_order_release);
+                if(a_async)
+                {
+                    auto completed_flag = std::make_shared<std::atomic<bool>>(false);
+                    auto task_thread = std::make_shared<std::jthread>(
+                        [callback = observer.m_callback, p = payload, completed_flag]()
+                        {
+                            callback(p);
+                            completed_flag->store(true, std::memory_order_release);
+                        });
+                    std::lock_guard task_lock(m_tasks_mutex);
+                    auto& tasks = m_async_tasks[observer.get_id()];
+                    // Clean up completed tasks to prevent unbounded growth
+                    std::erase_if(tasks, [](const AsyncTask& t) {
+                        return t.completed->load(std::memory_order_acquire);
                     });
-                std::lock_guard task_lock(m_tasks_mutex);
-                auto& tasks = m_async_tasks[observer.get_id()];
-                // Clean up completed tasks to prevent unbounded growth
-                std::erase_if(tasks, [](const AsyncTask& t) {
-                    return t.completed->load(std::memory_order_acquire);
-                });
-                tasks.push_back({task_thread, completed_flag});
-            }
-            else
-            {
-                observer.m_callback(payload);
+                    tasks.push_back({task_thread, completed_flag});
+                }
+                else
+                {
+                    sync_callbacks.push_back(observer.m_callback);
+                }
             }
         }
-        return static_cast<int>(observer_list.size());
+
+        for(auto& callback : sync_callbacks)
+            callback(payload);
+
+        return static_cast<int>(observer_count);
     }
 
     // Helper method to wait for async tasks related to a specific observer

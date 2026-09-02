@@ -25,7 +25,8 @@ typedef enum {
     NOTIFLY_NOTIFICATION_NOT_FOUND = -2,
     NOTIFLY_PAYLOAD_TYPE_NOT_MATCH = -3,
     NOTIFLY_NO_MORE_OBSERVER_IDS = -4,
-    NOTIFLY_INVALID_HANDLE = -5
+    NOTIFLY_TIMEOUT = -5,
+    NOTIFLY_INVALID_HANDLE = -6
 } notifly_result_t;
 ```
 
@@ -66,11 +67,103 @@ int notifly_post_notification(notifly_handle handle, int notification_id, void* 
 int notifly_post_notification_async(notifly_handle handle, int notification_id, void* data);
 ```
 
+### Waiting For A Reply
+
+`notifly_post_notification` is one-way. When something is expected to answer, `notifly_post_and_wait`
+posts a request and blocks until the reply arrives or the timeout expires. It subscribes before
+posting, so a reply that comes back before the post call returns is still caught.
+
+```c
+// Post post_notification_id, then block until wait_notification_id is posted (or timeout_ms
+// elapses). On success *response_data holds the payload the reply was posted with.
+int notifly_post_and_wait(notifly_handle handle,
+                          int post_notification_id,
+                          int wait_notification_id,
+                          int timeout_ms,
+                          void* post_data,
+                          void** response_data);
+```
+
+```c
+void* reply = NULL;
+int result = notifly_post_and_wait(notifly, REQUEST_ID, REPLY_ID, 500, request_data, &reply);
+if (result == NOTIFLY_TIMEOUT) { /* nobody answered */ }
+```
+
+### Exchange
+
+For anything `notifly_post_and_wait` cannot express — ignoring a reply that isn't the one being
+waited for, several possible answers where which one arrived matters, a reply streamed in
+pieces, silence as the successful outcome, or waiting on an event with nothing to post — a
+`notifly_exchange_handle` is the same machinery with the pieces exposed. It mirrors
+`notifly::exchange` from the C++ API (see the README).
+
+```c
+typedef struct notifly_exchange* notifly_exchange_handle;
+
+typedef enum {
+    NOTIFLY_VERDICT_SKIP = 0,  // Not what is being waited for. Stay subscribed, record nothing.
+    NOTIFLY_VERDICT_KEEP = 1,  // Part of a streamed reply. Record it and keep waiting.
+    NOTIFLY_VERDICT_DONE = 2   // This delivery completes the exchange.
+} notifly_verdict_t;
+
+typedef notifly_verdict_t (*notifly_exchange_handler)(int notification_id, void* data, void* user_data);
+
+notifly_exchange_handle notifly_exchange_create(notifly_handle handle);
+void                    notifly_exchange_destroy(notifly_exchange_handle exchange);
+
+// Subscribe: handler judges each delivery, or capture() stores the first one into *out_data.
+// Both return notifly_exchange_status() after the call.
+int notifly_exchange_on(notifly_exchange_handle exchange, int notification_id,
+                        notifly_exchange_handler handler, void* user_data);
+int notifly_exchange_capture(notifly_exchange_handle exchange, int notification_id, void** out_data);
+
+// Block on the subscriptions above.
+int notifly_exchange_wait(notifly_exchange_handle exchange, int timeout_ms);        // fired id, or -1
+int notifly_exchange_silent_for(notifly_exchange_handle exchange, int window_ms);   // 1 if silent
+int notifly_exchange_drain(notifly_exchange_handle exchange, int quiet_ms, int deadline_ms); // count
+
+// Inspect without blocking.
+int notifly_exchange_status(notifly_exchange_handle exchange);
+int notifly_exchange_fired(notifly_exchange_handle exchange);
+int notifly_exchange_accepted(notifly_exchange_handle exchange);
+```
+
+| Shape | How |
+|---|---|
+| Ignore deliveries that are not the awaited one | handler returns `NOTIFLY_VERDICT_SKIP` |
+| Several possible answers, and which one arrived matters | several `notifly_exchange_on()` calls; `wait()` returns the notification that fired |
+| A reply streamed in pieces of unstated length | handler returns `NOTIFLY_VERDICT_KEEP`, end with `drain(quiet_ms, deadline_ms)` |
+| Silence is the successful outcome | `silent_for(window_ms)` |
+| Nothing to post — waiting on an external event | subscribe and `wait()`, post nothing |
+| One of several alternatives is a plain payload, not worth a handler | `capture(id, out_data)` |
+
+```c
+notifly_exchange_handle ex = notifly_exchange_create(notifly);
+
+void* reply = NULL;
+notifly_exchange_capture(ex, REPLY_ID, &reply);
+
+notifly_post_notification(notifly, REQUEST_ID, request_data);
+
+if (notifly_exchange_wait(ex, 500) < 0) { /* timed out */ }
+else { /* reply now points at the delivered payload */ }
+
+notifly_exchange_destroy(ex); // unsubscribes every handler
+```
+
+Once a handler returns `NOTIFLY_VERDICT_DONE` the exchange is complete and later deliveries are
+ignored. Never call `notifly_exchange_destroy()`, or `notifly_remove_observer()` on one of its
+observer ids, from inside a handler.
+
 ### Utility Functions
 
 ```c
 // Convert error code to human-readable string
 const char* notifly_result_to_string(int result);
+
+// Convert an exchange verdict to a human-readable string
+const char* notifly_verdict_to_string(int verdict);
 ```
 
 ## Usage Example
@@ -152,6 +245,7 @@ gcc -o my_program my_program.c -lnotifly_c -I/path/to/notifly/include
 - **Handles**: The default handle (`notifly_default()`) should never be destroyed. Only destroy handles created with `notifly_create()`.
 - **Data**: The library does not take ownership of data passed to `notifly_post_notification()`. Ensure data remains valid during synchronous calls.
 - **User data**: User data passed to `notifly_add_observer()` must remain valid until the observer is removed.
+- **Exchanges**: Every `notifly_exchange_create()` must be paired with `notifly_exchange_destroy()`, which unsubscribes every handler registered on it. A payload captured with `notifly_exchange_capture()` is only a pointer into whatever the poster passed — the same lifetime rule as `notifly_post_notification()`'s `data` applies to it.
 
 ## Thread Safety
 
@@ -184,3 +278,8 @@ Use `notifly_result_to_string()` to get human-readable error descriptions.
 | `remove_observer(id)` | `notifly_remove_observer(handle, id)` |
 | `post_notification(id, args...)` | `notifly_post_notification(handle, id, &data)` |
 | `post_notification_async(id, args...)` | `notifly_post_notification_async(handle, id, &data)` |
+| `post_and_wait(post_id, wait_id, ms, result, args...)` | `notifly_post_and_wait(handle, post_id, wait_id, ms, &data, &response)` |
+| `notifly::exchange ex(center);` | `notifly_exchange_handle ex = notifly_exchange_create(handle);` |
+| `ex.on<Args...>(id, handler)` | `notifly_exchange_on(ex, id, handler, user_data)` |
+| `ex.capture(id, out)` | `notifly_exchange_capture(ex, id, &out_data)` |
+| `ex.wait(timeout)` / `ex.silent_for(window)` / `ex.drain(quiet, deadline)` | `notifly_exchange_wait(ex, ms)` / `notifly_exchange_silent_for(ex, ms)` / `notifly_exchange_drain(ex, quiet_ms, deadline_ms)` |

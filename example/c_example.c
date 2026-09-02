@@ -16,8 +16,10 @@
 
 // Message IDs
 #define MSG_STARTUP 1001
-#define MSG_DATA_RECEIVED 1002  
+#define MSG_DATA_RECEIVED 1002
 #define MSG_SHUTDOWN 1003
+#define MSG_ENABLE 1004
+#define MSG_STATUS_REPLY 1005
 
 // Example data structure
 typedef struct {
@@ -65,6 +67,18 @@ void on_shutdown(int notification_id, void* data, void* user_data) {
 void on_any_message(int notification_id, void* data, void* user_data) {
     const char* observer_name = (const char*)user_data;
     printf("[%s] Notification %d received\n", observer_name, notification_id);
+}
+
+// Stands in for a device that replies to a command on its own -- notifly_exchange
+// lets the caller wait for that reply without hand-rolling subscribe/post/wait.
+void reply_with_status(int notification_id, void* data, void* user_data) {
+    (void)notification_id;
+    (void)data;
+    notifly_handle notifly = (notifly_handle)user_data;
+    // static: the exchange only stores this pointer, not the int it points to, so
+    // it must stay valid after this function returns and the caller reads it back.
+    static int status = 1;
+    notifly_post_notification(notifly, MSG_STATUS_REPLY, &status);
 }
 
 int main() {
@@ -170,7 +184,32 @@ int main() {
     
     notifly_destroy(custom_notifly);
     printf("   Custom instance destroyed\n");
-    
+
+    // Waiting for a reply with an exchange
+    printf("\n7. Waiting for a reply with an exchange...\n\n");
+
+    int responder = notifly_add_observer(notifly, MSG_ENABLE, reply_with_status, notifly);
+
+    notifly_exchange_handle exchange = notifly_exchange_create(notifly);
+    if (exchange) {
+        void* reply = NULL;
+        notifly_exchange_capture(exchange, MSG_STATUS_REPLY, &reply);
+
+        // Subscribing before posting is what makes this safe: a reply that comes
+        // back before this call even returns is still caught.
+        notifly_post_notification(notifly, MSG_ENABLE, NULL);
+
+        int fired = notifly_exchange_wait(exchange, 500);
+        if (fired < 0) {
+            printf("   Timed out waiting for a reply\n");
+        } else if (reply) {
+            printf("   Device replied with status %d\n", *(int*)reply);
+        }
+
+        notifly_exchange_destroy(exchange);
+    }
+    notifly_remove_observer(notifly, responder);
+
     printf("\n=== Example completed successfully! ===\n");
     return 0;
 }

@@ -41,6 +41,21 @@ private:
 static notifly_handle g_default_handle = nullptr;
 static std::mutex g_default_mutex;
 
+// Internal structure wrapping a notifly::exchange
+struct notifly_exchange {
+    std::unique_ptr<notifly::exchange> impl;
+    explicit notifly_exchange(notifly& center) : impl(std::make_unique<notifly::exchange>(center)) {}
+};
+
+namespace {
+    // Resolve the notifly instance a handle refers to (a custom instance, or the
+    // default centre). Same rule every function below repeats inline; factored
+    // out here so the new exchange functions don't have to.
+    notifly* resolve_instance(const notifly_handle handle) {
+        return handle->instance ? handle->instance.get() : &notifly::default_notifly();
+    }
+}
+
 extern "C" {
 
 notifly_handle notifly_create(void) {
@@ -254,6 +269,137 @@ int notifly_post_and_wait(notifly_handle handle,
         return static_cast<int>(ret);
     } catch (...) {
         return NOTIFLY_INVALID_HANDLE;
+    }
+}
+
+notifly_exchange_handle notifly_exchange_create(const notifly_handle handle) {
+    if (!handle) {
+        return nullptr;
+    }
+
+    try {
+        return new notifly_exchange(*resolve_instance(handle));
+    } catch (...) {
+        return nullptr;
+    }
+}
+
+void notifly_exchange_destroy(const notifly_exchange_handle exchange) {
+    delete exchange;
+}
+
+int notifly_exchange_on(const notifly_exchange_handle exchange,
+                        const int notification_id,
+                        const notifly_exchange_handler handler,
+                        void* user_data) {
+    if (!exchange || !handler) {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+
+    try {
+        // void* is the same payload shape notifly_add_observer()/notifly_post_notification()
+        // already use, so this type-matches notifications posted through the rest of the C API.
+        exchange->impl->on<void*>(notification_id,
+            [notification_id, handler, user_data](void* data) -> notifly_verdict
+            {
+                switch (handler(notification_id, data, user_data)) {
+                    case NOTIFLY_VERDICT_SKIP: return notifly_verdict::skip;
+                    case NOTIFLY_VERDICT_KEEP: return notifly_verdict::keep;
+                    default:                   return notifly_verdict::done;
+                }
+            });
+
+        return static_cast<int>(exchange->impl->status());
+    } catch (...) {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+}
+
+int notifly_exchange_capture(const notifly_exchange_handle exchange, const int notification_id, void** out_data) {
+    if (!exchange || !out_data) {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+
+    try {
+        *out_data = nullptr;
+        exchange->impl->capture<void*>(notification_id, *out_data);
+        return static_cast<int>(exchange->impl->status());
+    } catch (...) {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+}
+
+int notifly_exchange_wait(const notifly_exchange_handle exchange, const int timeout_ms) {
+    if (!exchange) {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+
+    try {
+        return exchange->impl->wait(std::chrono::milliseconds(timeout_ms));
+    } catch (...) {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+}
+
+int notifly_exchange_silent_for(const notifly_exchange_handle exchange, const int window_ms) {
+    if (!exchange) {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+
+    try {
+        return exchange->impl->silent_for(std::chrono::milliseconds(window_ms)) ? 1 : 0;
+    } catch (...) {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+}
+
+int notifly_exchange_drain(const notifly_exchange_handle exchange, const int quiet_ms, const int deadline_ms) {
+    if (!exchange) {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+
+    try {
+        return static_cast<int>(exchange->impl->drain(
+            std::chrono::milliseconds(quiet_ms), std::chrono::milliseconds(deadline_ms)));
+    } catch (...) {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+}
+
+int notifly_exchange_status(const notifly_exchange_handle exchange) {
+    if (!exchange) {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+
+    return static_cast<int>(exchange->impl->status());
+}
+
+int notifly_exchange_fired(const notifly_exchange_handle exchange) {
+    if (!exchange) {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+
+    return exchange->impl->fired();
+}
+
+int notifly_exchange_accepted(const notifly_exchange_handle exchange) {
+    if (!exchange) {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+
+    return static_cast<int>(exchange->impl->accepted());
+}
+
+const char* notifly_verdict_to_string(const int verdict) {
+    switch (verdict) {
+        case NOTIFLY_VERDICT_SKIP:
+            return "Skip";
+        case NOTIFLY_VERDICT_KEEP:
+            return "Keep";
+        case NOTIFLY_VERDICT_DONE:
+            return "Done";
+        default:
+            return "Unknown";
     }
 }
 

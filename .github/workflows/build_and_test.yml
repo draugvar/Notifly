@@ -65,3 +65,69 @@ jobs:
         run: |
           ctest --build-config Release --output-on-failure --verbose -T memcheck
 
+  build-rust:
+    name: Build and Test (Rust backend)
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup CMake
+        uses: jwlawson/actions-setup-cmake@master
+
+      - name: Configure CMake (Rust backend)
+        run: cmake -B build -DNOTIFLY_BACKEND=rust
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Run Tests
+        working-directory: build
+        run: ctest --build-config Release --output-on-failure --verbose
+
+  tag-release:
+    name: Tag release
+    # Only after a real merge to main -- never on a pull_request event, and
+    # only once both backends have proven they still build and pass.
+    if: github.event_name == 'push'
+    needs: [build, build-rust]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        run: |
+          major=$(grep -oP '(?<=#define NOTIFLY_VERSION_MAJOR )\d+' include/notifly.h)
+          minor=$(grep -oP '(?<=#define NOTIFLY_VERSION_MINOR )\d+' include/notifly.h)
+          echo "tag=v${major}.${minor}" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether the tag already exists
+        id: check
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/${{ steps.version.outputs.tag }}" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag ${{ steps.version.outputs.tag }} already exists -- nothing to do."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create and push tag
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
+

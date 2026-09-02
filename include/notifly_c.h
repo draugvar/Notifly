@@ -129,7 +129,10 @@ NOTIFLY_C_API int notifly_exchange_on(notifly_exchange_handle exchange,
                                       void* user_data);
 
 /* Subscribe to a notification and store its first delivery's payload into
- * *out_data (set to NULL until then). Same return convention as
+ * *out_data (set to NULL until then). The subscription retains out_data and
+ * writes through it when a delivery arrives, so out_data itself must stay
+ * valid until the exchange fires or is destroyed -- never pass storage from a
+ * scope that ends before the wait. Same return convention as
  * notifly_exchange_on(). */
 NOTIFLY_C_API int notifly_exchange_capture(notifly_exchange_handle exchange,
                                            int notification_id,

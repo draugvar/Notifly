@@ -85,7 +85,22 @@ impl NotiflyCore {
 
 struct NotiflyInner {
     core: Mutex<NotiflyCore>,
-    pending_tasks: Mutex<Vec<thread::JoinHandle<()>>>,
+    // Async dispatches still in flight, keyed by the observer they run for --
+    // the same bookkeeping notifly's C++ backend keeps in m_async_tasks, so
+    // removing an observer can wait for work that already cloned its callback.
+    pending_tasks: Mutex<HashMap<i32, Vec<thread::JoinHandle<()>>>>,
+}
+
+// Join dispatches that are already in flight. Skips the thread we are running
+// on: a callback that removes its own observer would otherwise deadlock on
+// itself, so its task is left to finish on its own instead.
+fn join_tasks(handles: Vec<thread::JoinHandle<()>>) {
+    let current = thread::current().id();
+    for handle in handles {
+        if handle.thread().id() != current {
+            let _ = handle.join();
+        }
+    }
 }
 
 // ── Public opaque handle type ─────────────────────────────────────────────────
@@ -101,7 +116,7 @@ impl notifly_instance {
         Self {
             inner: Arc::new(NotiflyInner {
                 core: Mutex::new(NotiflyCore::new()),
-                pending_tasks: Mutex::new(Vec::new()),
+                pending_tasks: Mutex::new(HashMap::new()),
             }),
         }
     }
@@ -121,78 +136,118 @@ impl notifly_instance {
         }
     }
 
+    // Take the given observers' in-flight dispatches out of the pending map and
+    // join them with no lock held, so a callback can still re-enter the centre
+    // while it finishes.
+    fn wait_for_observer_tasks(&self, observer_ids: &[i32]) {
+        let handles: Vec<thread::JoinHandle<()>> = {
+            let mut tasks = self.inner.pending_tasks.lock().unwrap();
+            observer_ids
+                .iter()
+                .filter_map(|id| tasks.remove(id))
+                .flatten()
+                .collect()
+        };
+        join_tasks(handles);
+    }
+
     fn remove_observer(&self, observer_id: i32) -> i32 {
-        let mut core = self.inner.core.lock().unwrap();
-        match core.observer_location.remove(&observer_id) {
-            None => NOTIFLY_OBSERVER_NOT_FOUND,
-            Some(notification_id) => {
-                if let Some(vec) = core.observers.get_mut(&notification_id) {
-                    vec.retain(|e| e.id != observer_id);
-                    if vec.is_empty() {
-                        core.observers.remove(&notification_id);
+        {
+            let mut core = self.inner.core.lock().unwrap();
+            match core.observer_location.remove(&observer_id) {
+                None => return NOTIFLY_OBSERVER_NOT_FOUND,
+                Some(notification_id) => {
+                    if let Some(vec) = core.observers.get_mut(&notification_id) {
+                        vec.retain(|e| e.id != observer_id);
+                        if vec.is_empty() {
+                            core.observers.remove(&notification_id);
+                        }
                     }
                 }
-                core.recycled_ids.push(observer_id);
-                NOTIFLY_SUCCESS
             }
         }
+
+        // A dispatch that already cloned this callback may still be running. The
+        // caller is free to release its user_data once removal returns (and an
+        // exchange's Drop runs right after this), so wait for that work here
+        // rather than let it dereference freed memory.
+        self.wait_for_observer_tasks(&[observer_id]);
+
+        self.inner.core.lock().unwrap().recycled_ids.push(observer_id);
+        NOTIFLY_SUCCESS
     }
 
     fn remove_all_observers(&self, notification_id: i32) -> i32 {
-        let mut core = self.inner.core.lock().unwrap();
-        match core.observers.remove(&notification_id) {
-            None => 0,
-            Some(observers) => {
-                let count = observers.len() as i32;
-                for entry in &observers {
-                    core.observer_location.remove(&entry.id);
-                    core.recycled_ids.push(entry.id);
+        let observer_ids: Vec<i32> = {
+            let mut core = self.inner.core.lock().unwrap();
+            match core.observers.remove(&notification_id) {
+                None => return 0,
+                Some(observers) => {
+                    let ids: Vec<i32> = observers.iter().map(|e| e.id).collect();
+                    for id in &ids {
+                        core.observer_location.remove(id);
+                    }
+                    ids
                 }
-                count
             }
+        };
+
+        // Same contract as remove_observer(): no id is recycled, and nothing is
+        // reported removed, while a dispatch for it is still in flight.
+        self.wait_for_observer_tasks(&observer_ids);
+
+        let mut core = self.inner.core.lock().unwrap();
+        for id in &observer_ids {
+            core.recycled_ids.push(*id);
         }
+        observer_ids.len() as i32
     }
 
     // Snapshot callbacks without holding the lock so callbacks can re-enter.
-    fn snapshot_callbacks(&self, notification_id: i32) -> Option<Vec<InternalCallback>> {
+    fn snapshot_observers(&self, notification_id: i32) -> Option<Vec<(i32, InternalCallback)>> {
         let core = self.inner.core.lock().unwrap();
         core.observers.get(&notification_id).map(|list| {
-            list.iter().map(|e| Arc::clone(&e.callback)).collect()
+            list.iter().map(|e| (e.id, Arc::clone(&e.callback))).collect()
         })
     }
 
     fn post_notification_sync(&self, notification_id: i32, data: *mut c_void) -> i32 {
-        let callbacks = match self.snapshot_callbacks(notification_id) {
+        let observers = match self.snapshot_observers(notification_id) {
             None => return NOTIFLY_NOTIFICATION_NOT_FOUND,
-            Some(cbs) => cbs,
+            Some(obs) => obs,
         };
-        let count = callbacks.len() as i32;
+        let count = observers.len() as i32;
         let data_usize = data as usize;
-        for cb in callbacks {
+        for (_, cb) in observers {
             cb(data_usize);
         }
         count
     }
 
     fn post_notification_async_impl(&self, notification_id: i32, data: *mut c_void) -> i32 {
-        let callbacks = match self.snapshot_callbacks(notification_id) {
+        let observers = match self.snapshot_observers(notification_id) {
             None => return NOTIFLY_NOTIFICATION_NOT_FOUND,
-            Some(cbs) => cbs,
+            Some(obs) => obs,
         };
-        if callbacks.is_empty() {
+        if observers.is_empty() {
             return NOTIFLY_NOTIFICATION_NOT_FOUND;
         }
-        let count = callbacks.len() as i32;
+        let count = observers.len() as i32;
         let data_usize = data as usize;
-        let handle = thread::spawn(move || {
-            for cb in callbacks {
-                cb(data_usize);
-            }
-        });
-        {
-            let mut tasks = self.inner.pending_tasks.lock().unwrap();
-            tasks.push(handle);
-            tasks.retain(|h| !h.is_finished());
+        let mut tasks = self.inner.pending_tasks.lock().unwrap();
+        for (id, cb) in observers {
+            // thread::Builder rather than thread::spawn: this runs behind an
+            // extern "C" export, where the panic spawn() raises when the OS is
+            // out of threads cannot unwind to the caller and would abort the
+            // process. Report it the way the C++ backend reports its caught
+            // thread-creation failure instead.
+            let handle = match thread::Builder::new().spawn(move || cb(data_usize)) {
+                Ok(handle) => handle,
+                Err(_) => return NOTIFLY_INVALID_HANDLE,
+            };
+            let entry = tasks.entry(id).or_default();
+            entry.retain(|h| !h.is_finished());
+            entry.push(handle);
         }
         count
     }
@@ -259,10 +314,11 @@ impl notifly_instance {
 
 impl Drop for notifly_instance {
     fn drop(&mut self) {
-        let mut tasks = self.inner.pending_tasks.lock().unwrap();
-        for handle in tasks.drain(..) {
-            let _ = handle.join();
-        }
+        let handles: Vec<thread::JoinHandle<()>> = {
+            let mut tasks = self.inner.pending_tasks.lock().unwrap();
+            tasks.drain().flat_map(|(_, handles)| handles).collect()
+        };
+        join_tasks(handles);
     }
 }
 

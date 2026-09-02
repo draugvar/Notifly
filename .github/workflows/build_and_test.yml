@@ -89,7 +89,10 @@ jobs:
         uses: jwlawson/actions-setup-cmake@master
 
       - name: Configure CMake (Rust backend)
-        run: cmake -B build -DNOTIFLY_BACKEND=rust
+        # CMAKE_BUILD_TYPE, not just --config: on Linux this is a single-config
+        # generator, where --config is ignored and the build type has to be set
+        # here for the release profile to be the one that gets tested.
+        run: cmake -B build -DNOTIFLY_BACKEND=rust -DCMAKE_BUILD_TYPE=Release
 
       - name: Build
         run: cmake --build build --config Release

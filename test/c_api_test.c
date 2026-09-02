@@ -107,6 +107,20 @@ void non_responder_callback(int notification_id, void* data, void* user_data) {
     callback_count++;
 }
 
+/* Deliberately slow observer: a removal racing with it must not return until
+ * this has finished writing through the user_data it was given. */
+static volatile int slow_callback_started = 0;
+static volatile int slow_callback_finished = 0;
+
+void slow_async_callback(int notification_id, void* data, void* user_data) {
+    slow_callback_started = 1;
+    sleep_ms(200);
+    if (user_data) {
+        *(int*)user_data = 42;
+    }
+    slow_callback_finished = 1;
+}
+
 /* Exchange handlers */
 
 notifly_verdict_t exchange_done_handler(int notification_id, void* data, void* user_data) {
@@ -264,6 +278,42 @@ int test_post_and_wait_timeout(void) {
     notifly_remove_observer(handle, observer_id);
     notifly_remove_all_observers(handle, 6003);
     notifly_remove_all_observers(handle, 6004);
+
+    return 1;
+}
+
+/* Removing an observer must not return while a dispatch that already picked up
+ * its callback is still running: the caller may free user_data as soon as it
+ * does. */
+int test_remove_observer_waits_for_async_callback(void) {
+    reset_test_state();
+
+    notifly_handle handle = notifly_default();
+    ASSERT_NOT_NULL(handle, "Could not get default handle");
+
+    notifly_remove_all_observers(handle, 6009);
+    slow_callback_started = 0;
+    slow_callback_finished = 0;
+    int user_data = 0;
+
+    const int observer_id = notifly_add_observer(handle, 6009, slow_async_callback, &user_data);
+    ASSERT(observer_id > 0, "Could not add observer");
+
+    const int posted = notifly_post_notification_async(handle, 6009, NULL);
+    ASSERT_EQ(posted, 1, "Expected 1 observer notified asynchronously");
+
+    /* Let the callback actually start, so the removal races with it. */
+    for (int i = 0; i < 200 && !slow_callback_started; ++i) {
+        sleep_ms(5);
+    }
+    ASSERT(slow_callback_started, "Async callback should have started");
+
+    const int result = notifly_remove_observer(handle, observer_id);
+    ASSERT_EQ(result, NOTIFLY_SUCCESS, "Could not remove observer");
+    ASSERT(slow_callback_finished, "Removal should wait for the in-flight async callback");
+    ASSERT_EQ(user_data, 42, "Async callback should have finished writing its user_data");
+
+    notifly_remove_all_observers(handle, 6009);
 
     return 1;
 }
@@ -455,6 +505,7 @@ int main(void) {
     RUN_TEST(test_post_and_wait_success);
     RUN_TEST(test_post_and_wait_timeout);
     RUN_TEST(test_post_and_wait_invalid_params);
+    RUN_TEST(test_remove_observer_waits_for_async_callback);
     RUN_TEST(test_exchange_basic_on_and_wait);
     RUN_TEST(test_exchange_skip_then_done);
     RUN_TEST(test_exchange_which_notification_fired);

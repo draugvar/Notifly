@@ -245,7 +245,7 @@ gcc -o my_program my_program.c -lnotifly_c -I/path/to/notifly/include
 - **Handles**: The default handle (`notifly_default()`) should never be destroyed. Only destroy handles created with `notifly_create()`.
 - **Data**: The library does not take ownership of data passed to `notifly_post_notification()`. Ensure data remains valid during synchronous calls.
 - **User data**: User data passed to `notifly_add_observer()` must remain valid until the observer is removed.
-- **Exchanges**: Every `notifly_exchange_create()` must be paired with `notifly_exchange_destroy()`, which unsubscribes every handler registered on it. A payload captured with `notifly_exchange_capture()` is only a pointer into whatever the poster passed — the same lifetime rule as `notifly_post_notification()`'s `data` applies to it.
+- **Exchanges**: Every `notifly_exchange_create()` must be paired with `notifly_exchange_destroy()`, which unsubscribes every handler registered on it. A payload captured with `notifly_exchange_capture()` is only a pointer into whatever the poster passed — the same lifetime rule as `notifly_post_notification()`'s `data` applies to it. The `out_data` storage itself is retained by the subscription and written when a delivery arrives, so it must stay valid until a delivery completes the exchange or the exchange is destroyed — never pass a local from a helper scope that ends before the wait.
 
 ## Thread Safety
 

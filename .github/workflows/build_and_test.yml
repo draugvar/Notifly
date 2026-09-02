@@ -101,6 +101,34 @@ jobs:
         working-directory: build
         run: ctest --build-config Release --output-on-failure --verbose
 
+      - name: Install Valgrind (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y valgrind
+
+      - name: Reconfigure CMake with Valgrind (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        run: cmake -B build -DNOTIFLY_BACKEND=rust -DCMAKE_BUILD_TYPE=Release
+
+      - name: Verify Valgrind Configuration (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: build
+        run: |
+          if ! grep -q "MemoryCheckCommand:.*valgrind" DartConfiguration.tcl; then
+            echo "ERROR: Valgrind was not found by CMake"
+            exit 1
+          fi
+          echo "Valgrind successfully configured"
+
+      - name: Run Tests with Valgrind (Linux only)
+        # Exercises the unsafe FFI glue in rust/src/lib.rs (raw pointer capture
+        # in notifly_exchange::on(), the observer/task bookkeeping) via the same
+        # C API test suite the cpp backend runs under Valgrind, just linked
+        # against notifly_c.dll/.so built from the Rust crate instead.
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: build
+        run: |
+          ctest --build-config Release --output-on-failure --verbose -T memcheck
+
   tag-release:
     name: Tag release
     # Only after a real merge to main -- never on a pull_request event. No

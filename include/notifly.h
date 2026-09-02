@@ -30,6 +30,8 @@
 #include <functional>
 #include <list>
 #include <mutex>
+#include <condition_variable>
+#include <chrono>
 #include <any>
 #include <typeindex>
 #include <thread>
@@ -49,7 +51,7 @@
 #endif
 
 #define NOTIFLY_VERSION_MAJOR 3
-#define NOTIFLY_VERSION_MINOR 5
+#define NOTIFLY_VERSION_MINOR 6
 #define NOTIFLY_VERSION_PATCH 0
 
 #define NOTIFLY_VERSION (NOTIFLY_VERSION_MAJOR << 16 | NOTIFLY_VERSION_MINOR << 8 | NOTIFLY_VERSION_PATCH)
@@ -66,6 +68,32 @@ enum class notifly_result
     no_more_observer_ids =      -4,
     timeout =                   -5
 };
+
+/**
+ * @brief   What a notifly::exchange handler decides about one delivery.
+ *
+ * A handler sees every delivery of the notification it subscribed to and says
+ * what it is: something to ignore, one of several pieces of a streamed reply,
+ * or the one that ends the wait.
+ */
+enum class notifly_verdict
+{
+    skip,   ///< Not what is being waited for. Stay subscribed, record nothing.
+    keep,   ///< Part of a streamed reply. Record it and keep waiting.
+    done    ///< This delivery completes the exchange.
+};
+
+namespace notifly_detail
+{
+    /**
+     * @brief   Helper trait to detect tuple types.
+     */
+    template<typename>
+    struct is_tuple : std::false_type {};
+
+    template<typename... Args>
+    struct is_tuple<std::tuple<Args...>> : std::true_type {};
+}
 
 /**
  * @brief   This class is an observer that is used to observe notifications.
@@ -182,14 +210,14 @@ public:
         };
 
         // Add observer to appropriate lists
-        auto&[observers] = m_observers[a_notification];
-        observers.push_back(observer);
+        auto& obs = m_observers[a_notification].observers;
+        obs.push_back(std::move(observer));
 
         // Store reference to the observer for quick lookup by ID
         m_observer_lookup[id] =
         {
             a_notification,
-            --observers.end()
+            --obs.end()
         };
 
         return id;
@@ -306,41 +334,248 @@ public:
         ResultTuple& a_result,
         PostArgs... post_args)
     {
-        // Create promise/future for synchronization
-        auto response_promise = std::make_shared<std::promise<ResultTuple>>();
-        std::future<ResultTuple> response_future = response_promise->get_future();
+        // Subscribing before posting is what makes this safe: a reply that comes
+        // back before the post call has even returned is still caught.
+        exchange ex(*this);
+        ex.capture(a_wait_notification, a_result);
+        if (ex.status() != notifly_result::success) return ex.status();
 
-        // Register temporary observer for the response
-        int observer_id = add_response_observer(a_wait_notification, response_promise);
+        const int post_result = post_notification(a_post_notification, std::forward<PostArgs>(post_args)...);
 
-        if (observer_id < 0) return static_cast<notifly_result>(observer_id);
+        if (post_result < 0) return static_cast<notifly_result>(post_result);
+        if (post_result == 0) return notifly_result::notification_not_found;
 
-        // Post the request
-        int post_result = post_notification(a_post_notification, std::forward<PostArgs>(post_args)...);
-
-        if (post_result < 0)
-        {
-            remove_observer(observer_id);
-            return static_cast<notifly_result>(post_result);
-        }
-
-        if (post_result == 0)
-        {
-            remove_observer(observer_id);
-            return notifly_result::notification_not_found;
-        }
-
-        // Wait for response with timeout
-        auto status = response_future.wait_for(std::chrono::milliseconds(a_timeout_ms));
-
-        // Remove the temporary observer
-        remove_observer(observer_id);
-
-        if (status == std::future_status::timeout) return notifly_result::timeout;
-
-        a_result = response_future.get();
-        return notifly_result::success;
+        return ex.wait(std::chrono::milliseconds(a_timeout_ms)) < 0
+            ? notifly_result::timeout
+            : notifly_result::success;
     }
+
+    /**
+     * @brief   A scoped set of subscriptions that a thread can block on.
+     *
+     * Where post_and_wait() covers the common shape -- post one notification,
+     * wait for one reply, take the first that arrives -- an exchange covers the
+     * rest: waiting on several notifications at once and learning which one
+     * answered, ignoring deliveries that are not the one being waited for,
+     * collecting a reply the sender streams in pieces, posting nothing at all,
+     * or treating silence as the successful outcome.
+     *
+     * Subscribe with on(), then post whatever the reply is expected to answer,
+     * then block on wait(), drain() or silent_for(). The destructor
+     * unsubscribes, and remove_observer() waits for a dispatch already in
+     * flight, so a handler may safely refer to the caller's own locals.
+     *
+     * Once a handler returns notifly_verdict::done the exchange is complete and
+     * later deliveries are ignored, so a sender that repeats itself -- or
+     * answers on two of the subscribed notifications -- cannot disturb what the
+     * winning handler stored.
+     *
+     * @warning Never destroy an exchange, or call remove_observer(), from
+     *          inside a handler: dispatch runs with the notification centre
+     *          locked, and unsubscribing there would wait on the very dispatch
+     *          that is running.
+     */
+    class exchange
+    {
+    public:
+        explicit exchange(notifly& a_center) : m_center(a_center) {}
+
+        ~exchange()
+        {
+            for (const int observer: m_observers) m_center.remove_observer(observer);
+        }
+
+        exchange(const exchange&) = delete;
+        exchange& operator=(const exchange&) = delete;
+
+        /**
+         * @brief                   Subscribe to a notification, letting a handler judge each delivery.
+         * @param a_notification    The notification to observe.
+         * @param a_handler         Callable (Args...) -> notifly_verdict.
+         * @return                  This exchange, so subscriptions can be chained.
+         */
+        template<typename ...Args, typename Handler>
+        exchange& on(const int a_notification, Handler a_handler)
+        {
+            const int id = m_center.add_observer(a_notification,
+                std::function<void(Args...)>(
+                    [this, a_notification, a_handler](Args... args)
+                    {
+                        offer(a_notification, [&] { return a_handler(args...); });
+                    }));
+
+            if (id > 0) m_observers.push_back(id);
+            else if (m_status == notifly_result::success) m_status = static_cast<notifly_result>(id);
+
+            return *this;
+        }
+
+        /**
+         * @brief                   Subscribe to a notification, accepting its first delivery and reading nothing out of it.
+         * @param a_notification    The notification to observe.
+         * @return                  This exchange, so subscriptions can be chained.
+         */
+        template<typename ...Args>
+        exchange& on(const int a_notification)
+        {
+            return on<Args...>(a_notification, [](Args...) { return notifly_verdict::done; });
+        }
+
+        /**
+         * @brief                   Subscribe to a notification and store its first delivery into a tuple.
+         * @param a_notification    The notification to observe.
+         * @param a_out             Where to store the payload.
+         * @return                  This exchange, so subscriptions can be chained.
+         */
+        template<typename ...Args>
+        exchange& capture(const int a_notification, std::tuple<Args...>& a_out)
+        {
+            return on<Args...>(a_notification, [&a_out](Args... args)
+            {
+                a_out = std::make_tuple(args...);
+                return notifly_verdict::done;
+            });
+        }
+
+        /**
+         * @brief                   Subscribe to a notification and store its first delivery into a single value.
+         * @param a_notification    The notification to observe.
+         * @param a_out             Where to store the payload.
+         * @return                  This exchange, so subscriptions can be chained.
+         */
+        template<typename T, std::enable_if_t<!notifly_detail::is_tuple<T>::value, int> = 0>
+        exchange& capture(const int a_notification, T& a_out)
+        {
+            return on<T>(a_notification, [&a_out](T a_value)
+            {
+                a_out = a_value;
+                return notifly_verdict::done;
+            });
+        }
+
+        /**
+         * @brief               Block until a handler returns done, or the timeout expires.
+         * @param a_timeout     How long to wait.
+         * @return              The notification that completed the exchange, or -1 on timeout.
+         */
+        [[nodiscard]] int wait(const std::chrono::milliseconds a_timeout)
+        {
+            std::unique_lock lock(m_mutex);
+            if(!m_cv.wait_for(lock, a_timeout, [this] { return m_fired >= 0; })) return -1;
+            return m_fired;
+        }
+
+        /**
+         * @brief               Block for the whole window and report whether nothing arrived.
+         *
+         * For protocols where the sender only answers when a command fails, so
+         * silence is the successful outcome.
+         *
+         * @param a_window      How long the sender is given to object.
+         * @return              True if no handler returned done within the window.
+         */
+        [[nodiscard]] bool silent_for(const std::chrono::milliseconds a_window)
+        {
+            return wait(a_window) < 0;
+        }
+
+        /**
+         * @brief               Block while a reply is streamed in pieces, until the sender goes quiet.
+         *
+         * Ends as soon as a handler returns done, or once nothing has been
+         * accepted for a_quiet, or at a_deadline -- whichever comes first. For
+         * replies whose length the protocol never states.
+         *
+         * @param a_quiet       Idle time that marks the end of the stream.
+         * @param a_deadline    Upper bound on the whole wait.
+         * @return              How many deliveries were accepted (keep or done).
+         */
+        [[nodiscard]] std::size_t drain(const std::chrono::milliseconds a_quiet,
+                                        const std::chrono::milliseconds a_deadline)
+        {
+            const auto deadline = std::chrono::steady_clock::now() + a_deadline;
+            std::unique_lock lock(m_mutex);
+
+            while(m_fired < 0)
+            {
+                const auto now = std::chrono::steady_clock::now();
+                if(now >= deadline) break;
+                if(m_accepted > 0 && now - m_last_accept >= a_quiet) break;
+
+                // Wake at whichever comes first: the quiet window closing on the
+                // last delivery, or the deadline.
+                auto wake = deadline;
+                if(m_accepted > 0)
+                {
+                    if(const auto quiet_at = m_last_accept + a_quiet; quiet_at < wake) wake = quiet_at;
+                }
+                m_cv.wait_until(lock, wake);
+            }
+
+            return m_accepted;
+        }
+
+        /**
+         * @brief   The first subscription error, or success if every on() call took.
+         */
+        [[nodiscard]] notifly_result status() const { return m_status; }
+
+        /**
+         * @brief   The notification that completed the exchange, or -1 if none has.
+         */
+        [[nodiscard]] int fired()
+        {
+            std::lock_guard lock(m_mutex);
+            return m_fired;
+        }
+
+        /**
+         * @brief   How many deliveries have been accepted so far.
+         */
+        [[nodiscard]] std::size_t accepted()
+        {
+            std::lock_guard lock(m_mutex);
+            return m_accepted;
+        }
+
+    private:
+        /**
+         * @brief   Offer one delivery to its handler and record the verdict.
+         *
+         * The handler runs under the exchange's own lock so that "the first done
+         * wins" is atomic against a second delivery arriving on another thread.
+         */
+        void offer(const int a_notification, const std::function<notifly_verdict()>& a_evaluate)
+        {
+            {
+                std::lock_guard lock(m_mutex);
+
+                // Already complete: leave whatever the winning handler stored alone.
+                if(m_fired >= 0) return;
+
+                const notifly_verdict verdict = a_evaluate();
+                if(verdict == notifly_verdict::skip) return;
+
+                ++m_accepted;
+                m_last_accept = std::chrono::steady_clock::now();
+
+                if(verdict == notifly_verdict::done) m_fired = a_notification;
+            }
+            // Wakes wait() on done, and drain() on either verdict so it can
+            // re-measure the quiet window.
+            m_cv.notify_all();
+        }
+
+        notifly& m_center;
+        std::vector<int> m_observers;
+        notifly_result m_status = notifly_result::success;
+
+        std::mutex m_mutex;
+        std::condition_variable m_cv;
+        int m_fired = -1;
+        std::size_t m_accepted = 0;
+        std::chrono::steady_clock::time_point m_last_accept{};
+    };
 
     /**
      * @brief   Get the default global notification center.
@@ -364,42 +599,6 @@ public:
     }
 
 private:
-    /**
-     * @brief Helper trait to detect tuple types
-     */
-    template<typename>
-    struct is_tuple : std::false_type {};
-
-    template<typename... Args>
-    struct is_tuple<std::tuple<Args...>> : std::true_type {};
-
-    /**
-     * @brief Add observer for response - specialization for tuple types
-     */
-    template<typename... Args>
-    int add_response_observer(const int a_notification, std::shared_ptr<std::promise<std::tuple<Args...>>> promise)
-    {
-        // Tuple response
-        return add_observer(a_notification, [promise](Args... args)
-        {
-            promise->set_value(std::make_tuple(args...));
-        });
-    }
-
-    /**
-     * @brief Add observer for response - for single types using SFINAE
-     */
-    template<typename T>
-    std::enable_if_t<!is_tuple<T>::value, int>
-    add_response_observer(const int a_notification, std::shared_ptr<std::promise<T>> promise)
-    {
-        // Single value response
-        return add_observer(a_notification, [promise](T value)
-        {
-            promise->set_value(value);
-        });
-    }
-
     // Structure to group observer data for a notification
     struct NotificationData
     {
@@ -430,43 +629,63 @@ private:
         // Create payload tuple
         auto payload = std::make_any<std::tuple<Args...>>(std::make_tuple(args...));
 
-        // Check notification and type compatibility
-        std::lock_guard lock(m_mutex);
-
-        auto it = m_observers.find(a_notification);
-        if(it == m_observers.end())
-            return static_cast<int>(notifly_result::notification_not_found);
-
-        const auto& observer_list = it->second.observers;
-        if(observer_list.empty() || observer_list.front().get_types() != types)
-            return static_cast<int>(notifly_result::payload_type_not_match);
-
-        // Notify all observers
-        for(const auto& observer : observer_list)
+        // Collect the synchronous callbacks under the lock, then run them without it.
+        //
+        // Invoking them here, while m_mutex is held, makes one observer's work everybody's
+        // problem: nothing else can post a notification until it returns. A caller that posts
+        // from several independent sources -- separate devices sharing one notification centre,
+        // say -- then has them serialise on this mutex, and a handler that blocks stalls sources
+        // it knows nothing about. Worse, a blocking call that waits for a reply delivered through
+        // this same centre cannot be satisfied while another observer is running, so it waits out
+        // its whole timeout for no reason.
+        //
+        // The callbacks are copied, so removing an observer while its callback is in flight does
+        // not pull the ground out from under it.
+        std::vector<std::function<std::any(std::any)>> sync_callbacks;
+        std::size_t observer_count = 0;
         {
-            if(a_async)
+            std::lock_guard lock(m_mutex);
+
+            auto it = m_observers.find(a_notification);
+            if(it == m_observers.end())
+                return static_cast<int>(notifly_result::notification_not_found);
+
+            const auto& observer_list = it->second.observers;
+            if(observer_list.empty() || observer_list.front().get_types() != types)
+                return static_cast<int>(notifly_result::payload_type_not_match);
+
+            observer_count = observer_list.size();
+
+            for(const auto& observer : observer_list)
             {
-                auto completed_flag = std::make_shared<std::atomic<bool>>(false);
-                auto task_thread = std::make_shared<std::jthread>(
-                    [callback = observer.m_callback, p = payload, completed_flag]()
-                    {
-                        callback(p);
-                        completed_flag->store(true, std::memory_order_release);
+                if(a_async)
+                {
+                    auto completed_flag = std::make_shared<std::atomic<bool>>(false);
+                    auto task_thread = std::make_shared<std::jthread>(
+                        [callback = observer.m_callback, p = payload, completed_flag]()
+                        {
+                            callback(p);
+                            completed_flag->store(true, std::memory_order_release);
+                        });
+                    std::lock_guard task_lock(m_tasks_mutex);
+                    auto& tasks = m_async_tasks[observer.get_id()];
+                    // Clean up completed tasks to prevent unbounded growth
+                    std::erase_if(tasks, [](const AsyncTask& t) {
+                        return t.completed->load(std::memory_order_acquire);
                     });
-                std::lock_guard task_lock(m_tasks_mutex);
-                auto& tasks = m_async_tasks[observer.get_id()];
-                // Clean up completed tasks to prevent unbounded growth
-                std::erase_if(tasks, [](const AsyncTask& t) {
-                    return t.completed->load(std::memory_order_acquire);
-                });
-                tasks.push_back({task_thread, completed_flag});
-            }
-            else
-            {
-                observer.m_callback(payload);
+                    tasks.push_back({task_thread, completed_flag});
+                }
+                else
+                {
+                    sync_callbacks.push_back(observer.m_callback);
+                }
             }
         }
-        return static_cast<int>(observer_list.size());
+
+        for(auto& callback : sync_callbacks)
+            callback(payload);
+
+        return static_cast<int>(observer_count);
     }
 
     // Helper method to wait for async tasks related to a specific observer

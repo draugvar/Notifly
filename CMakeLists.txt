@@ -48,7 +48,7 @@ if(NOTIFLY_BACKEND STREQUAL "cpp")
     set_target_properties(gtest_main PROPERTIES MSVC_RUNTIME_LIBRARY MultiThreaded$<$<CONFIG:Debug>:Debug>)
 
     # C++ unit tests (use notifly.h directly, no shared lib dependency)
-    file(GLOB UNIT_SOURCE test/unit_test.cpp test/unit_test.h src/*.cpp include/*.h)
+    file(GLOB UNIT_SOURCE test/unit_test.cpp test/unit_test.h test/exchange_test.cpp src/*.cpp include/*.h)
     set(UNIT_TEST notifly_unit_test)
     add_executable(${UNIT_TEST} ${UNIT_SOURCE})
     target_include_directories(${UNIT_TEST} PRIVATE test/google_test/include)
@@ -64,6 +64,18 @@ if(NOTIFLY_BACKEND STREQUAL "cpp")
     )
 
     add_test(NAME UnitTests COMMAND ${UNIT_TEST})
+
+    # Exchange example
+    set(EXCHANGE_EXAMPLE notifly_exchange_example)
+    add_executable(${EXCHANGE_EXAMPLE} example/exchange_example.cpp)
+    target_include_directories(${EXCHANGE_EXAMPLE} PRIVATE include)
+    target_compile_features(${EXCHANGE_EXAMPLE} PUBLIC cxx_std_20)
+    target_link_libraries(${EXCHANGE_EXAMPLE} PRIVATE ${CMAKE_THREAD_LIBS_INIT})
+    set_target_properties(${EXCHANGE_EXAMPLE} PROPERTIES
+        OUTPUT_NAME ${EXCHANGE_EXAMPLE}
+        LINKER_LANGUAGE CXX
+        MSVC_RUNTIME_LIBRARY MultiThreaded$<$<CONFIG:Debug>:Debug>
+    )
 
 # ── Rust backend ──────────────────────────────────────────────────────────────
 elseif(NOTIFLY_BACKEND STREQUAL "rust")

@@ -9,6 +9,14 @@ on:
     branches:
       - main
 
+# A new push to the same PR cancels whatever run its previous push started --
+# no point letting a stale commit finish building. Grouped by PR number so
+# only that PR's own runs cancel each other (github.event.pull_request.number
+# is unset for push/workflow_dispatch, where the group falls back to the ref).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     # PRs are what this validates; the push that lands the merge commit on
@@ -17,6 +25,7 @@ jobs:
     if: github.event_name != 'push'
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
         build_type: [Release]
@@ -69,12 +78,20 @@ jobs:
         run: |
           ctest --build-config Release --output-on-failure --verbose -T memcheck
 
+      - name: Show Valgrind log (Linux only)
+        # Same reasoning as the equivalent step in build-rust: ctest only prints
+        # a one-line defect count, not the actual Valgrind report.
+        if: always() && matrix.os == 'ubuntu-latest'
+        working-directory: build
+        run: cat Testing/Temporary/MemoryChecker.*.log
+
   build-rust:
     name: Build and Test (Rust backend)
     # Same reasoning as build: only PRs (and on-demand runs) need this.
     if: github.event_name != 'push'
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
 
@@ -100,6 +117,42 @@ jobs:
       - name: Run Tests
         working-directory: build
         run: ctest --build-config Release --output-on-failure --verbose
+
+      - name: Install Valgrind (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install -y valgrind
+
+      - name: Reconfigure CMake with Valgrind (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        run: cmake -B build -DNOTIFLY_BACKEND=rust -DCMAKE_BUILD_TYPE=Release
+
+      - name: Verify Valgrind Configuration (Linux only)
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: build
+        run: |
+          if ! grep -q "MemoryCheckCommand:.*valgrind" DartConfiguration.tcl; then
+            echo "ERROR: Valgrind was not found by CMake"
+            exit 1
+          fi
+          echo "Valgrind successfully configured"
+
+      - name: Run Tests with Valgrind (Linux only)
+        # Exercises the unsafe FFI glue in rust/src/lib.rs (raw pointer capture
+        # in notifly_exchange::on(), the observer/task bookkeeping) via the same
+        # C API test suite the cpp backend runs under Valgrind, just linked
+        # against notifly_c.dll/.so built from the Rust crate instead.
+        if: matrix.os == 'ubuntu-latest'
+        working-directory: build
+        run: |
+          ctest --build-config Release --output-on-failure --verbose -T memcheck
+
+      - name: Show Valgrind log (Linux only)
+        # ctest only prints a one-line defect count, not the actual Valgrind
+        # report; this dumps it so a failure here is diagnosable from the run
+        # log instead of needing a local Linux box to reproduce it.
+        if: always() && matrix.os == 'ubuntu-latest'
+        working-directory: build
+        run: cat Testing/Temporary/MemoryChecker.*.log
 
   tag-release:
     name: Tag release
@@ -137,11 +190,16 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create and push tag
+      - name: Create release
         if: steps.check.outputs.exists == 'false'
+        # Creates the tag and the GitHub Release together, targeting this push's
+        # commit -- matches every release already on the repo (v2..v3.7), which
+        # are Releases, not bare tags.
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
-          git push origin "${{ steps.version.outputs.tag }}"
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --title "${{ steps.version.outputs.tag }}" \
+            --generate-notes \
+            --target "${{ github.sha }}"
 

@@ -56,4 +56,19 @@
    fun:*__cxa_*
 }
 
+# Suppress Rust's per-thread std::thread::Thread bookkeeping (rust backend).
+# remove_observer() joins the jthread standing in for a pending async task;
+# the joined OS thread's first call to std::thread::current() lazily
+# allocates that Thread handle. glibc can keep the underlying pthread stack
+# on a free-list for reuse after join rather than returning it immediately,
+# which Valgrind reports as "possibly lost" even though nothing actually
+# leaked -- same class of false positive as pthread_create above, just on
+# the Rust std side of the same join.
+{
+   rust_thread_current_init
+   Memcheck:Leak
+   ...
+   fun:*init_current*
+}
+
 

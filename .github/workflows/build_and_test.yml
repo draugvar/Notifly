@@ -18,6 +18,30 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  check-version:
+    name: Check version was bumped
+    # Fails fast, before the (much slower) build jobs even start: a PR whose
+    # project(notifly VERSION x.y.z) matches a tag that already exists on the
+    # repo would land on main and produce nothing in tag-release -- silently,
+    # since that job just no-ops on an existing tag. Catching it here instead
+    # means the PR goes red immediately with a message telling the author to
+    # bump the version, rather than merging into a no-op release.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify project(VERSION) doesn't already have a tag
+        run: |
+          version=$(grep -oP '(?<=^project\(notifly VERSION )[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt)
+          tag="v${version}"
+          if git ls-remote --exit-code --tags origin "refs/tags/${tag}" > /dev/null 2>&1; then
+            echo "::error file=CMakeLists.txt::project(notifly VERSION ${version}) already has a tag (${tag}) on this repo -- bump the version in CMakeLists.txt before merging, or this PR won't produce a new release."
+            exit 1
+          fi
+          echo "OK: ${tag} does not exist yet -- merging this PR will create it."
+
   build:
     # PRs are what this validates; the push that lands the merge commit on
     # main is the same tree a passing PR run already checked, so don't build

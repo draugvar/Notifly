@@ -9,6 +9,14 @@ on:
     branches:
       - main
 
+# A new push to the same PR cancels whatever run its previous push started --
+# no point letting a stale commit finish building. Grouped by PR number so
+# only that PR's own runs cancel each other (github.event.pull_request.number
+# is unset for push/workflow_dispatch, where the group falls back to the ref).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     # PRs are what this validates; the push that lands the merge commit on

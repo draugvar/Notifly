@@ -58,9 +58,7 @@ typedef enum {
 } notifly_result_t;
 
 /* Library version */
-#define NOTIFLY_C_VERSION_MAJOR 1
-#define NOTIFLY_C_VERSION_MINOR 2
-#define NOTIFLY_C_VERSION_PATCH 0
+#include "notifly_version.h"
 
 /* Instance management */
 NOTIFLY_C_API notifly_handle notifly_create(void);

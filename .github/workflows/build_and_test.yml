@@ -108,10 +108,14 @@ jobs:
 
       - name: Determine version
         id: version
+        # The single source of truth is project(notifly VERSION x.y.z) in
+        # CMakeLists.txt -- everything else (notifly_version.h, rust/Cargo.toml,
+        # the notifly_c SOVERSION) is generated or read from it, so read it from
+        # there rather than from a generated file that may not have been
+        # regenerated and committed.
         run: |
-          major=$(grep -oP '(?<=#define NOTIFLY_VERSION_MAJOR )\d+' include/notifly.h)
-          minor=$(grep -oP '(?<=#define NOTIFLY_VERSION_MINOR )\d+' include/notifly.h)
-          echo "tag=v${major}.${minor}" >> "$GITHUB_OUTPUT"
+          version=$(grep -oP '(?<=^project\(notifly VERSION )[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt)
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
 
       - name: Check whether the tag already exists
         id: check

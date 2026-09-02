@@ -1,7 +1,27 @@
 cmake_minimum_required(VERSION 3.16)
-project(notifly)
+project(notifly VERSION 3.8.0)
 
 set(CMAKE_CXX_STANDARD 20)
+
+# ── Version ────────────────────────────────────────────────────────────────────
+#
+# project(VERSION) above is the one place the project version is set. Everything
+# else that needs it -- include/notifly.h, include/notifly_c.h, rust/Cargo.toml,
+# the notifly_c shared library's VERSION/SOVERSION, and the CI tag on merge to
+# main -- is generated or read from it, so there is nothing else to keep in sync
+# by hand. Both files below are committed (so a checkout that never runs CMake,
+# e.g. someone vendoring just the headers, or a bare `cargo build` in rust/,
+# still gets a valid version); running CMake regenerates them in place.
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/notifly_version.h.in
+    ${CMAKE_CURRENT_SOURCE_DIR}/include/notifly_version.h
+    @ONLY
+)
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/rust/Cargo.toml.in
+    ${CMAKE_CURRENT_SOURCE_DIR}/rust/Cargo.toml
+    @ONLY
+)
 
 # ── Backend selection ─────────────────────────────────────────────────────────
 set(NOTIFLY_BACKEND "cpp" CACHE STRING "Backend implementation: cpp or rust")
@@ -25,8 +45,8 @@ if(NOTIFLY_BACKEND STREQUAL "cpp")
     set_target_properties(${PROJECT_NAME}_c PROPERTIES
         LINKER_LANGUAGE CXX
         OUTPUT_NAME "notifly_c"
-        VERSION 1.0.0
-        SOVERSION 1
+        VERSION ${PROJECT_VERSION}
+        SOVERSION ${PROJECT_VERSION_MAJOR}
         DEFINE_SYMBOL "NOTIFLY_C_EXPORTS"
     )
     target_compile_features(${PROJECT_NAME}_c PUBLIC cxx_std_20)

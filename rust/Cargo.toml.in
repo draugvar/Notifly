@@ -1,6 +1,6 @@
 [package]
 name = "notifly_c"
-version = "3.8.0"
+version = "@PROJECT_VERSION@"
 edition = "2021"
 
 [lib]

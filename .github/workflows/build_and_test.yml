@@ -78,6 +78,13 @@ jobs:
         run: |
           ctest --build-config Release --output-on-failure --verbose -T memcheck
 
+      - name: Show Valgrind log (Linux only)
+        # Same reasoning as the equivalent step in build-rust: ctest only prints
+        # a one-line defect count, not the actual Valgrind report.
+        if: always() && matrix.os == 'ubuntu-latest'
+        working-directory: build
+        run: cat Testing/Temporary/MemoryChecker.*.log
+
   build-rust:
     name: Build and Test (Rust backend)
     # Same reasoning as build: only PRs (and on-demand runs) need this.

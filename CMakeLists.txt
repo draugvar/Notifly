@@ -83,7 +83,15 @@ if(NOTIFLY_BACKEND STREQUAL "cpp")
         MSVC_RUNTIME_LIBRARY MultiThreaded$<$<CONFIG:Debug>:Debug>
     )
 
-    add_test(NAME UnitTests COMMAND ${UNIT_TEST})
+    # NotiflyMemoryLeak.HighFrequencyAsyncDispatch spawns 5000 real OS threads in
+    # a tight loop -- fine normally (whole suite runs in ~4s), but Valgrind's
+    # per-thread overhead makes that expensive enough to be flaky under memcheck
+    # (observed: a clean pass at 398s, and a run that aborted argue it hit a
+    # resource limit around 89s). Split it into its own ctest entry so
+    # CTestCustom.cmake can skip just that one during memcheck, while both still
+    # run as part of a normal `ctest`/`Run Tests` invocation.
+    add_test(NAME UnitTests COMMAND ${UNIT_TEST} --gtest_filter=-NotiflyMemoryLeak.HighFrequencyAsyncDispatch)
+    add_test(NAME UnitTestsHighFrequencyAsyncDispatch COMMAND ${UNIT_TEST} --gtest_filter=NotiflyMemoryLeak.HighFrequencyAsyncDispatch)
 
     # Exchange example
     set(EXCHANGE_EXAMPLE notifly_exchange_example)
@@ -173,6 +181,14 @@ endif()
 
 include(CTest)
 add_test(NAME CApiTests COMMAND ${C_API_TEST})
+
+# CTest reads CTestCustom.cmake (CTEST_CUSTOM_MEMCHECK_IGNORE, used above) from
+# the *build* tree, not the source tree -- copying it isn't automatic.
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/CTestCustom.cmake
+    ${CMAKE_CURRENT_BINARY_DIR}/CTestCustom.cmake
+    COPYONLY
+)
 
 # ── Utility function ──────────────────────────────────────────────────────────
 function(move_file source_file destination_dir)

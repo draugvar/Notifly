@@ -3,7 +3,7 @@ use std::ffi::{c_char, c_int, c_void};
 use std::ptr;
 use std::sync::{Arc, Condvar, Mutex, OnceLock};
 use std::thread;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 // ── Result codes ─────────────────────────────────────────────────────────────
 
@@ -25,6 +25,19 @@ pub enum notifly_result_t {
     NOTIFLY_NO_MORE_OBSERVER_IDS = -4,
     NOTIFLY_TIMEOUT = -5,
     NOTIFLY_INVALID_HANDLE = -6,
+}
+
+/// What an exchange handler decides about one delivery.
+#[repr(C)]
+#[derive(Clone, Copy, PartialEq, Eq)]
+#[allow(non_camel_case_types)]
+pub enum notifly_verdict_t {
+    /// Not what is being waited for. Stay subscribed, record nothing.
+    NOTIFLY_VERDICT_SKIP = 0,
+    /// Part of a streamed reply. Record it and keep waiting.
+    NOTIFLY_VERDICT_KEEP = 1,
+    /// This delivery completes the exchange.
+    NOTIFLY_VERDICT_DONE = 2,
 }
 
 // ── Internal callback type ────────────────────────────────────────────────────
@@ -253,6 +266,212 @@ impl Drop for notifly_instance {
     }
 }
 
+// ── Exchange ─────────────────────────────────────────────────────────────────
+//
+// A scoped set of subscriptions a thread can block on -- native port of
+// notifly::exchange (include/notifly.h). Where notifly_post_and_wait() covers
+// one request/reply shape, an exchange covers the rest: waiting on several
+// notifications at once and learning which one answered, ignoring deliveries
+// that are not the one being waited for, collecting a reply streamed in
+// pieces, posting nothing at all, or treating silence as success.
+
+type ExchangeHandler = unsafe extern "C" fn(c_int, *mut c_void, *mut c_void) -> notifly_verdict_t;
+
+struct ExchangeState {
+    /// The notification that completed the exchange, or -1 if none has yet.
+    fired: i32,
+    accepted: usize,
+    last_accept: Option<Instant>,
+}
+
+/// Opaque exchange handle (exposed to C as a pointer via notifly_exchange_handle).
+#[allow(non_camel_case_types)]
+pub struct notifly_exchange {
+    // The notifly_instance this exchange subscribes against, smuggled as usize --
+    // same idiom the rest of this file uses for *mut c_void payloads. The caller
+    // must keep it alive for as long as the exchange (see notifly_exchange_create).
+    center: usize,
+    observers: Mutex<Vec<i32>>,
+    status: Mutex<c_int>,
+    state: Mutex<ExchangeState>,
+    cv: Condvar,
+}
+
+impl notifly_exchange {
+    fn new(center: *mut notifly_instance) -> Self {
+        Self {
+            center: center as usize,
+            observers: Mutex::new(Vec::new()),
+            status: Mutex::new(NOTIFLY_SUCCESS),
+            state: Mutex::new(ExchangeState {
+                fired: -1,
+                accepted: 0,
+                last_accept: None,
+            }),
+            cv: Condvar::new(),
+        }
+    }
+
+    fn center(&self) -> &notifly_instance {
+        // SAFETY: caller-managed lifetime, same contract as every other handle
+        // in this file (see notifly_exchange_create's Safety doc).
+        unsafe { &*(self.center as *const notifly_instance) }
+    }
+
+    /// Subscribe to a notification, letting `handler` judge each delivery.
+    /// Returns the exchange's cumulative status right after the call.
+    fn on(&self, notification_id: c_int, handler: ExchangeHandler, user_data: *mut c_void) -> c_int {
+        // The callback captures this exchange's own address rather than an Arc,
+        // mirroring notifly::exchange::on()'s C++ lambda, which captures `this` by
+        // raw pointer -- same contract: the exchange must outlive any dispatch
+        // that might still be in flight against it.
+        let self_addr = self as *const notifly_exchange as usize;
+        let user_data_addr = user_data as usize;
+        let cb: InternalCallback = Arc::new(move |data_usize: usize| {
+            let ex = unsafe { &*(self_addr as *const notifly_exchange) };
+            ex.offer(notification_id, data_usize, handler, user_data_addr);
+        });
+
+        let id = self.center().add_observer_internal(notification_id, cb);
+        if id > 0 {
+            self.observers.lock().unwrap().push(id);
+        } else {
+            let mut status = self.status.lock().unwrap();
+            if *status == NOTIFLY_SUCCESS {
+                *status = id;
+            }
+        }
+
+        *self.status.lock().unwrap()
+    }
+
+    /// Offer one delivery to its handler and record the verdict. Runs under the
+    /// exchange's own lock so "the first done wins" is atomic against a second
+    /// delivery arriving on another thread.
+    fn offer(&self, notification_id: c_int, data_usize: usize, handler: ExchangeHandler, user_data_addr: usize) {
+        {
+            let mut state = self.state.lock().unwrap();
+
+            // Already complete: leave whatever the winning handler stored alone.
+            if state.fired >= 0 {
+                return;
+            }
+
+            let data = data_usize as *mut c_void;
+            let user_data = user_data_addr as *mut c_void;
+            let verdict = unsafe { handler(notification_id, data, user_data) };
+            if verdict == notifly_verdict_t::NOTIFLY_VERDICT_SKIP {
+                return;
+            }
+
+            state.accepted += 1;
+            state.last_accept = Some(Instant::now());
+            if verdict == notifly_verdict_t::NOTIFLY_VERDICT_DONE {
+                state.fired = notification_id;
+            }
+        }
+        // Wakes wait() on done, and drain() on either verdict so it can
+        // re-measure the quiet window.
+        self.cv.notify_all();
+    }
+
+    /// Block until a handler returns done, or the timeout expires. Returns the
+    /// notification that completed the exchange, or -1 on timeout.
+    fn wait(&self, timeout_ms: c_int) -> c_int {
+        let state = self.state.lock().unwrap();
+        let (state, _) = self
+            .cv
+            .wait_timeout_while(state, Duration::from_millis(timeout_ms.max(0) as u64), |s| {
+                s.fired < 0
+            })
+            .unwrap();
+        state.fired
+    }
+
+    /// Block for the whole window and report whether nothing arrived.
+    fn silent_for(&self, window_ms: c_int) -> bool {
+        self.wait(window_ms) < 0
+    }
+
+    /// Block while a reply is streamed in pieces, until the sender goes quiet.
+    /// Returns how many deliveries were accepted (keep or done).
+    fn drain(&self, quiet_ms: c_int, deadline_ms: c_int) -> usize {
+        let quiet = Duration::from_millis(quiet_ms.max(0) as u64);
+        let deadline = Instant::now() + Duration::from_millis(deadline_ms.max(0) as u64);
+        let mut state = self.state.lock().unwrap();
+
+        loop {
+            if state.fired >= 0 {
+                break;
+            }
+            let now = Instant::now();
+            if now >= deadline {
+                break;
+            }
+
+            // Wake at whichever comes first: the quiet window closing on the
+            // last delivery, or the deadline.
+            let mut wake = deadline;
+            if let Some(last) = state.last_accept {
+                if state.accepted > 0 {
+                    let quiet_at = last + quiet;
+                    if quiet_at <= now {
+                        break;
+                    }
+                    if quiet_at < wake {
+                        wake = quiet_at;
+                    }
+                }
+            }
+
+            let (s, _) = self.cv.wait_timeout(state, wake.saturating_duration_since(now)).unwrap();
+            state = s;
+        }
+
+        state.accepted
+    }
+
+    /// The first subscription error, or NOTIFLY_SUCCESS if every on() call took.
+    fn status(&self) -> c_int {
+        *self.status.lock().unwrap()
+    }
+
+    /// The notification that completed the exchange, or -1 if none has.
+    fn fired(&self) -> c_int {
+        self.state.lock().unwrap().fired
+    }
+
+    /// How many deliveries have been accepted so far.
+    fn accepted(&self) -> usize {
+        self.state.lock().unwrap().accepted
+    }
+}
+
+impl Drop for notifly_exchange {
+    fn drop(&mut self) {
+        let observers = self.observers.lock().unwrap();
+        for &id in observers.iter() {
+            self.center().remove_observer(id);
+        }
+    }
+}
+
+/// Handler notifly_exchange_capture() registers internally: stores the
+/// delivered payload into the *mut *mut c_void passed through as user_data,
+/// and finishes -- the same relationship exchange::capture() has to on() in
+/// the C++ backend.
+unsafe extern "C" fn capture_handler(
+    _notification_id: c_int,
+    data: *mut c_void,
+    user_data: *mut c_void,
+) -> notifly_verdict_t {
+    let out = user_data as *mut *mut c_void;
+    if !out.is_null() {
+        *out = data;
+    }
+    notifly_verdict_t::NOTIFLY_VERDICT_DONE
+}
+
 // ── Global default instance ───────────────────────────────────────────────────
 
 static DEFAULT_INSTANCE: OnceLock<Mutex<Option<Box<notifly_instance>>>> = OnceLock::new();
@@ -414,6 +633,154 @@ pub unsafe extern "C" fn notifly_post_and_wait(
     )
 }
 
+/// Create an exchange bound to the given centre.
+///
+/// # Safety
+/// `handle` must be a valid pointer that outlives the returned exchange.
+#[no_mangle]
+pub unsafe extern "C" fn notifly_exchange_create(handle: *mut notifly_instance) -> *mut notifly_exchange {
+    if handle.is_null() {
+        return ptr::null_mut();
+    }
+    Box::into_raw(Box::new(notifly_exchange::new(handle)))
+}
+
+/// Unsubscribe every handler and destroy the exchange.
+///
+/// # Safety
+/// `exchange` must be a valid pointer obtained from `notifly_exchange_create`, or null.
+#[no_mangle]
+pub unsafe extern "C" fn notifly_exchange_destroy(exchange: *mut notifly_exchange) {
+    if !exchange.is_null() {
+        drop(Box::from_raw(exchange));
+    }
+}
+
+/// Subscribe to a notification, letting `handler` judge each delivery. Returns
+/// notifly_exchange_status() after the call.
+///
+/// # Safety
+/// `exchange` must be a valid pointer. `user_data` lifetime is managed by the caller.
+#[no_mangle]
+pub unsafe extern "C" fn notifly_exchange_on(
+    exchange: *mut notifly_exchange,
+    notification_id: c_int,
+    // Written out instead of Option<ExchangeHandler>: cbindgen only collapses
+    // Option<fn pointer> into a plain nullable C function pointer when the fn
+    // type is spelled out here, not referenced through a type alias (see
+    // notifly_add_observer's `callback` parameter, same reasoning).
+    handler: Option<unsafe extern "C" fn(c_int, *mut c_void, *mut c_void) -> notifly_verdict_t>,
+    user_data: *mut c_void,
+) -> c_int {
+    if exchange.is_null() || handler.is_none() {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+    (*exchange).on(notification_id, handler.unwrap(), user_data)
+}
+
+/// Subscribe to a notification and store its first delivery's payload into
+/// `*out_data` (set to null until then). Same return convention as
+/// `notifly_exchange_on`.
+///
+/// # Safety
+/// `exchange` and `out_data` must be valid pointers.
+#[no_mangle]
+pub unsafe extern "C" fn notifly_exchange_capture(
+    exchange: *mut notifly_exchange,
+    notification_id: c_int,
+    out_data: *mut *mut c_void,
+) -> c_int {
+    if exchange.is_null() || out_data.is_null() {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+    *out_data = ptr::null_mut();
+    (*exchange).on(notification_id, capture_handler, out_data as *mut c_void)
+}
+
+/// Block until a handler returns done, or the timeout expires. Returns the
+/// notification that fired, or -1 on timeout.
+///
+/// # Safety
+/// `exchange` must be a valid pointer.
+#[no_mangle]
+pub unsafe extern "C" fn notifly_exchange_wait(exchange: *mut notifly_exchange, timeout_ms: c_int) -> c_int {
+    if exchange.is_null() {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+    (*exchange).wait(timeout_ms)
+}
+
+/// Block for the whole window and report whether nothing arrived (1) or a
+/// handler completed the exchange within it (0).
+///
+/// # Safety
+/// `exchange` must be a valid pointer.
+#[no_mangle]
+pub unsafe extern "C" fn notifly_exchange_silent_for(exchange: *mut notifly_exchange, window_ms: c_int) -> c_int {
+    if exchange.is_null() {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+    if (*exchange).silent_for(window_ms) {
+        1
+    } else {
+        0
+    }
+}
+
+/// Block while a reply is streamed in pieces, until quiet_ms of silence
+/// follows the last accepted delivery, deadline_ms elapses, or a handler
+/// completes the exchange. Returns how many deliveries were accepted.
+///
+/// # Safety
+/// `exchange` must be a valid pointer.
+#[no_mangle]
+pub unsafe extern "C" fn notifly_exchange_drain(
+    exchange: *mut notifly_exchange,
+    quiet_ms: c_int,
+    deadline_ms: c_int,
+) -> c_int {
+    if exchange.is_null() {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+    (*exchange).drain(quiet_ms, deadline_ms) as c_int
+}
+
+/// The first subscription error, or NOTIFLY_SUCCESS if every on()/capture() call took.
+///
+/// # Safety
+/// `exchange` must be a valid pointer.
+#[no_mangle]
+pub unsafe extern "C" fn notifly_exchange_status(exchange: *mut notifly_exchange) -> c_int {
+    if exchange.is_null() {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+    (*exchange).status()
+}
+
+/// The notification that completed the exchange, or -1 if none has yet.
+///
+/// # Safety
+/// `exchange` must be a valid pointer.
+#[no_mangle]
+pub unsafe extern "C" fn notifly_exchange_fired(exchange: *mut notifly_exchange) -> c_int {
+    if exchange.is_null() {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+    (*exchange).fired()
+}
+
+/// How many deliveries have been accepted so far.
+///
+/// # Safety
+/// `exchange` must be a valid pointer.
+#[no_mangle]
+pub unsafe extern "C" fn notifly_exchange_accepted(exchange: *mut notifly_exchange) -> c_int {
+    if exchange.is_null() {
+        return NOTIFLY_INVALID_HANDLE;
+    }
+    (*exchange).accepted() as c_int
+}
+
 /// Convert a result code to a human-readable C string.
 #[no_mangle]
 pub extern "C" fn notifly_result_to_string(result: c_int) -> *const c_char {
@@ -426,5 +793,16 @@ pub extern "C" fn notifly_result_to_string(result: c_int) -> *const c_char {
         NOTIFLY_TIMEOUT => c"Timeout".as_ptr(),
         NOTIFLY_INVALID_HANDLE => c"Invalid handle".as_ptr(),
         _ => c"Unknown error".as_ptr(),
+    }
+}
+
+/// Convert an exchange verdict to a human-readable C string.
+#[no_mangle]
+pub extern "C" fn notifly_verdict_to_string(verdict: c_int) -> *const c_char {
+    match verdict {
+        0 => c"Skip".as_ptr(),
+        1 => c"Keep".as_ptr(),
+        2 => c"Done".as_ptr(),
+        _ => c"Unknown".as_ptr(),
     }
 }

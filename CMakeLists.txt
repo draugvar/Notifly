@@ -88,6 +88,17 @@ elseif(NOTIFLY_BACKEND STREQUAL "rust")
     )
     FetchContent_MakeAvailable(Corrosion)
 
+    # rust/Cargo.toml builds both a staticlib and a cdylib. When a crate offers
+    # both, Corrosion's `notifly_c` target resolves to whichever BUILD_SHARED_LIBS
+    # says (see corrosion_import_crate() docs) -- which defaults to OFF, so it
+    # silently links the static archive. include/notifly_c.h's NOTIFLY_C_API is
+    # always __declspec(dllimport) for a consumer on Windows (the same contract
+    # the cpp backend satisfies by building notifly_c as a SHARED library), and a
+    # static archive has no import thunks to satisfy that, so consumers fail to
+    # link with "unresolved external symbol __imp_*". Forcing this ON picks the
+    # cdylib.
+    set(BUILD_SHARED_LIBS ON)
+
     # Import the Rust crate. Produces a CMake target named notifly_c
     # (matches [package] name in rust/Cargo.toml).
     corrosion_import_crate(

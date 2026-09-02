@@ -17,6 +17,7 @@ jobs:
     if: github.event_name != 'push'
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
         build_type: [Release]
@@ -75,6 +76,7 @@ jobs:
     if: github.event_name != 'push'
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest]
 
@@ -128,6 +130,14 @@ jobs:
         working-directory: build
         run: |
           ctest --build-config Release --output-on-failure --verbose -T memcheck
+
+      - name: Show Valgrind log (Linux only)
+        # ctest only prints a one-line defect count, not the actual Valgrind
+        # report; this dumps it so a failure here is diagnosable from the run
+        # log instead of needing a local Linux box to reproduce it.
+        if: always() && matrix.os == 'ubuntu-latest'
+        working-directory: build
+        run: cat Testing/Temporary/MemoryChecker.*.log
 
   tag-release:
     name: Tag release

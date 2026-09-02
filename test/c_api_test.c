@@ -107,6 +107,47 @@ void non_responder_callback(int notification_id, void* data, void* user_data) {
     callback_count++;
 }
 
+/* Deliberately slow observer: a removal racing with it must not return until
+ * this has finished writing through the user_data it was given. */
+static volatile int slow_callback_started = 0;
+static volatile int slow_callback_finished = 0;
+
+void slow_async_callback(int notification_id, void* data, void* user_data) {
+    slow_callback_started = 1;
+    sleep_ms(200);
+    if (user_data) {
+        *(int*)user_data = 42;
+    }
+    slow_callback_finished = 1;
+}
+
+/* Exchange handlers */
+
+notifly_verdict_t exchange_done_handler(int notification_id, void* data, void* user_data) {
+    (void)notification_id;
+    (void)data;
+    (void)user_data;
+    return NOTIFLY_VERDICT_DONE;
+}
+
+/* Skips every delivery until it sees the sentinel value, mirroring "ignore the
+ * state being left, only the state settled into ends the wait". */
+notifly_verdict_t exchange_skip_until_two_handler(int notification_id, void* data, void* user_data) {
+    (void)notification_id;
+    (void)user_data;
+    const int value = data ? *(int*)data : 0;
+    return value == 2 ? NOTIFLY_VERDICT_DONE : NOTIFLY_VERDICT_SKIP;
+}
+
+/* Always keeps, counting deliveries through user_data. */
+notifly_verdict_t exchange_keep_counting_handler(int notification_id, void* data, void* user_data) {
+    (void)notification_id;
+    (void)data;
+    int* count = (int*)user_data;
+    if (count) (*count)++;
+    return NOTIFLY_VERDICT_KEEP;
+}
+
 /* Test functions */
 
 int test_basic_functionality(void) {
@@ -241,6 +282,42 @@ int test_post_and_wait_timeout(void) {
     return 1;
 }
 
+/* Removing an observer must not return while a dispatch that already picked up
+ * its callback is still running: the caller may free user_data as soon as it
+ * does. */
+int test_remove_observer_waits_for_async_callback(void) {
+    reset_test_state();
+
+    notifly_handle handle = notifly_default();
+    ASSERT_NOT_NULL(handle, "Could not get default handle");
+
+    notifly_remove_all_observers(handle, 6009);
+    slow_callback_started = 0;
+    slow_callback_finished = 0;
+    int user_data = 0;
+
+    const int observer_id = notifly_add_observer(handle, 6009, slow_async_callback, &user_data);
+    ASSERT(observer_id > 0, "Could not add observer");
+
+    const int posted = notifly_post_notification_async(handle, 6009, NULL);
+    ASSERT_EQ(posted, 1, "Expected 1 observer notified asynchronously");
+
+    /* Let the callback actually start, so the removal races with it. */
+    for (int i = 0; i < 200 && !slow_callback_started; ++i) {
+        sleep_ms(5);
+    }
+    ASSERT(slow_callback_started, "Async callback should have started");
+
+    const int result = notifly_remove_observer(handle, observer_id);
+    ASSERT_EQ(result, NOTIFLY_SUCCESS, "Could not remove observer");
+    ASSERT(slow_callback_finished, "Removal should wait for the in-flight async callback");
+    ASSERT_EQ(user_data, 42, "Async callback should have finished writing its user_data");
+
+    notifly_remove_all_observers(handle, 6009);
+
+    return 1;
+}
+
 int test_post_and_wait_invalid_params(void) {
     reset_test_state();
 
@@ -257,6 +334,165 @@ int test_post_and_wait_invalid_params(void) {
     return 1;
 }
 
+int test_exchange_basic_on_and_wait(void) {
+    notifly_handle handle = notifly_default();
+    ASSERT_NOT_NULL(handle, "Could not get default handle");
+    notifly_remove_all_observers(handle, 7001);
+
+    notifly_exchange_handle ex = notifly_exchange_create(handle);
+    ASSERT_NOT_NULL(ex, "Could not create exchange");
+
+    int result = notifly_exchange_on(ex, 7001, exchange_done_handler, NULL);
+    ASSERT_EQ(result, NOTIFLY_SUCCESS, "on() should succeed");
+
+    int post_result = notifly_post_notification(handle, 7001, NULL);
+    ASSERT(post_result > 0, "Post should reach the exchange's observer");
+
+    int fired = notifly_exchange_wait(ex, 500);
+    ASSERT_EQ(fired, 7001, "wait() should report the notification that fired");
+    ASSERT_EQ(notifly_exchange_status(ex), NOTIFLY_SUCCESS, "status() should report success");
+
+    notifly_exchange_destroy(ex);
+    notifly_remove_all_observers(handle, 7001);
+    return 1;
+}
+
+int test_exchange_skip_then_done(void) {
+    notifly_handle handle = notifly_default();
+    notifly_remove_all_observers(handle, 7002);
+
+    notifly_exchange_handle ex = notifly_exchange_create(handle);
+    ASSERT_NOT_NULL(ex, "Could not create exchange");
+    ASSERT_EQ(notifly_exchange_on(ex, 7002, exchange_skip_until_two_handler, NULL),
+              NOTIFLY_SUCCESS, "on() should succeed");
+
+    int leaving = 1;
+    int entering = 2;
+    notifly_post_notification(handle, 7002, &leaving);
+    notifly_post_notification(handle, 7002, &entering);
+
+    int fired = notifly_exchange_wait(ex, 500);
+    ASSERT_EQ(fired, 7002, "wait() should fire once the awaited value arrives");
+    ASSERT_EQ(notifly_exchange_accepted(ex), 1, "Only the awaited delivery should be accepted");
+
+    notifly_exchange_destroy(ex);
+    notifly_remove_all_observers(handle, 7002);
+    return 1;
+}
+
+int test_exchange_which_notification_fired(void) {
+    notifly_handle handle = notifly_default();
+    notifly_remove_all_observers(handle, 7003);
+    notifly_remove_all_observers(handle, 7004);
+
+    notifly_exchange_handle ex = notifly_exchange_create(handle);
+    ASSERT_NOT_NULL(ex, "Could not create exchange");
+    notifly_exchange_on(ex, 7003, exchange_done_handler, NULL);
+    notifly_exchange_on(ex, 7004, exchange_done_handler, NULL);
+
+    notifly_post_notification(handle, 7004, NULL);
+
+    int fired = notifly_exchange_wait(ex, 500);
+    ASSERT_EQ(fired, 7004, "wait() should report which of the subscribed notifications fired");
+
+    notifly_exchange_destroy(ex);
+    notifly_remove_all_observers(handle, 7003);
+    notifly_remove_all_observers(handle, 7004);
+    return 1;
+}
+
+int test_exchange_silent_for(void) {
+    notifly_handle handle = notifly_default();
+    notifly_remove_all_observers(handle, 7005);
+
+    /* Nothing is posted: silence is the successful outcome. */
+    notifly_exchange_handle ex1 = notifly_exchange_create(handle);
+    ASSERT_NOT_NULL(ex1, "Could not create exchange");
+    notifly_exchange_on(ex1, 7005, exchange_done_handler, NULL);
+    ASSERT_EQ(notifly_exchange_silent_for(ex1, 100), 1, "silent_for should report silence when nothing objected");
+    notifly_exchange_destroy(ex1);
+    notifly_remove_all_observers(handle, 7005);
+
+    /* Something posted within the window: silent_for should report the opposite. */
+    notifly_exchange_handle ex2 = notifly_exchange_create(handle);
+    ASSERT_NOT_NULL(ex2, "Could not create exchange");
+    notifly_exchange_on(ex2, 7005, exchange_done_handler, NULL);
+    notifly_post_notification(handle, 7005, NULL);
+    ASSERT_EQ(notifly_exchange_silent_for(ex2, 200), 0, "silent_for should report the opposite when something objected");
+    notifly_exchange_destroy(ex2);
+    notifly_remove_all_observers(handle, 7005);
+    return 1;
+}
+
+int test_exchange_drain(void) {
+    notifly_handle handle = notifly_default();
+    notifly_remove_all_observers(handle, 7006);
+
+    notifly_exchange_handle ex = notifly_exchange_create(handle);
+    ASSERT_NOT_NULL(ex, "Could not create exchange");
+
+    int delivered = 0;
+    notifly_exchange_on(ex, 7006, exchange_keep_counting_handler, &delivered);
+
+    int entries[3] = {5, 10, 15};
+    for (int i = 0; i < 3; i++) {
+        notifly_post_notification(handle, 7006, &entries[i]);
+    }
+
+    int accepted = notifly_exchange_drain(ex, 50, 2000);
+    ASSERT_EQ(accepted, 3, "drain() should report every delivery accepted");
+    ASSERT_EQ(delivered, 3, "handler should have been invoked for every delivery");
+
+    notifly_exchange_destroy(ex);
+    notifly_remove_all_observers(handle, 7006);
+    return 1;
+}
+
+int test_exchange_capture(void) {
+    notifly_handle handle = notifly_default();
+    notifly_remove_all_observers(handle, 7007);
+
+    notifly_exchange_handle ex = notifly_exchange_create(handle);
+    ASSERT_NOT_NULL(ex, "Could not create exchange");
+
+    void* out_data = NULL;
+    ASSERT_EQ(notifly_exchange_capture(ex, 7007, &out_data), NOTIFLY_SUCCESS, "capture() should succeed");
+    ASSERT_NULL(out_data, "out_data should be NULL before the exchange fires");
+
+    test_data_t payload = {77, "Captured"};
+    notifly_post_notification(handle, 7007, &payload);
+
+    int fired = notifly_exchange_wait(ex, 500);
+    ASSERT_EQ(fired, 7007, "wait() should report the captured notification");
+    ASSERT_NOT_NULL(out_data, "out_data should hold the delivered payload");
+
+    const test_data_t* received = (const test_data_t*)out_data;
+    ASSERT_EQ(received->value, 77, "Captured payload should match what was posted");
+
+    notifly_exchange_destroy(ex);
+    notifly_remove_all_observers(handle, 7007);
+    return 1;
+}
+
+int test_exchange_invalid_params(void) {
+    ASSERT_NULL(notifly_exchange_create(NULL), "create() should fail with NULL handle");
+
+    notifly_handle handle = notifly_default();
+    notifly_exchange_handle ex = notifly_exchange_create(handle);
+    ASSERT_NOT_NULL(ex, "Could not create exchange");
+
+    ASSERT_EQ(notifly_exchange_on(ex, 7008, NULL, NULL), NOTIFLY_INVALID_HANDLE,
+              "on() should reject a NULL handler");
+    ASSERT_EQ(notifly_exchange_on(NULL, 7008, exchange_done_handler, NULL), NOTIFLY_INVALID_HANDLE,
+              "on() should reject a NULL exchange");
+    ASSERT_EQ(notifly_exchange_wait(NULL, 100), NOTIFLY_INVALID_HANDLE,
+              "wait() should reject a NULL exchange");
+
+    notifly_exchange_destroy(NULL); /* must be a no-op, not a crash */
+    notifly_exchange_destroy(ex);
+    return 1;
+}
+
 /* Main test runner */
 int main(void) {
     printf("==========================================\n");
@@ -269,6 +505,14 @@ int main(void) {
     RUN_TEST(test_post_and_wait_success);
     RUN_TEST(test_post_and_wait_timeout);
     RUN_TEST(test_post_and_wait_invalid_params);
+    RUN_TEST(test_remove_observer_waits_for_async_callback);
+    RUN_TEST(test_exchange_basic_on_and_wait);
+    RUN_TEST(test_exchange_skip_then_done);
+    RUN_TEST(test_exchange_which_notification_fired);
+    RUN_TEST(test_exchange_silent_for);
+    RUN_TEST(test_exchange_drain);
+    RUN_TEST(test_exchange_capture);
+    RUN_TEST(test_exchange_invalid_params);
 
     printf("\n==========================================\n");
     printf("  Test Results\n");

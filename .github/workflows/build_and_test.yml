@@ -11,6 +11,10 @@ on:
 
 jobs:
   build:
+    # PRs are what this validates; the push that lands the merge commit on
+    # main is the same tree a passing PR run already checked, so don't build
+    # it twice. workflow_dispatch stays available for an on-demand run.
+    if: github.event_name != 'push'
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
@@ -64,4 +68,80 @@ jobs:
         working-directory: build
         run: |
           ctest --build-config Release --output-on-failure --verbose -T memcheck
+
+  build-rust:
+    name: Build and Test (Rust backend)
+    # Same reasoning as build: only PRs (and on-demand runs) need this.
+    if: github.event_name != 'push'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Setup CMake
+        uses: jwlawson/actions-setup-cmake@master
+
+      - name: Configure CMake (Rust backend)
+        # CMAKE_BUILD_TYPE, not just --config: on Linux this is a single-config
+        # generator, where --config is ignored and the build type has to be set
+        # here for the release profile to be the one that gets tested.
+        run: cmake -B build -DNOTIFLY_BACKEND=rust -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      - name: Run Tests
+        working-directory: build
+        run: ctest --build-config Release --output-on-failure --verbose
+
+  tag-release:
+    name: Tag release
+    # Only after a real merge to main -- never on a pull_request event. No
+    # needs: [build, build-rust] here on purpose -- those jobs don't run for
+    # this event (see their own `if:`), and a job skipped by its own condition
+    # would make anything that needs() it skip too, taking this down with it.
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Determine version
+        id: version
+        # The single source of truth is project(notifly VERSION x.y.z) in
+        # CMakeLists.txt -- everything else (notifly_version.h, rust/Cargo.toml,
+        # the notifly_c SOVERSION) is generated or read from it, so read it from
+        # there rather than from a generated file that may not have been
+        # regenerated and committed.
+        run: |
+          version=$(grep -oP '(?<=^project\(notifly VERSION )[0-9]+\.[0-9]+\.[0-9]+' CMakeLists.txt)
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Check whether the tag already exists
+        id: check
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/${{ steps.version.outputs.tag }}" > /dev/null 2>&1; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+            echo "Tag ${{ steps.version.outputs.tag }} already exists -- nothing to do."
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create and push tag
+        if: steps.check.outputs.exists == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+          git push origin "${{ steps.version.outputs.tag }}"
 

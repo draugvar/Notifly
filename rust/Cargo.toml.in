@@ -1,0 +1,11 @@
+[package]
+name = "notifly_c"
+version = "@PROJECT_VERSION@"
+edition = "2021"
+
+[lib]
+name = "notifly_c"
+crate-type = ["staticlib", "cdylib"]
+
+[build-dependencies]
+cbindgen = "0.27"

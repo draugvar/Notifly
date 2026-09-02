@@ -50,11 +50,7 @@
 #undef max
 #endif
 
-#define NOTIFLY_VERSION_MAJOR 3
-#define NOTIFLY_VERSION_MINOR 6
-#define NOTIFLY_VERSION_PATCH 0
-
-#define NOTIFLY_VERSION (NOTIFLY_VERSION_MAJOR << 16 | NOTIFLY_VERSION_MINOR << 8 | NOTIFLY_VERSION_PATCH)
+#include "notifly_version.h"
 
 /**
  * @brief   This enum class defines the possible notifly_result that can occur when using the notification center.

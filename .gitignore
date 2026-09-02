@@ -259,3 +259,10 @@ paket-files/
 /cmake-build-*/
 build/
 .vscode/
+
+# Rust / Cargo
+rust/target/
+rust/Cargo.lock
+
+# cbindgen-generated header (reference artifact, rebuilt on cargo build)
+include/notifly_c_rust.h

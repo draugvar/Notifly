@@ -89,6 +89,92 @@ namespace notifly_detail
 
     template<typename... Args>
     struct is_tuple<std::tuple<Args...>> : std::true_type {};
+
+    /**
+     * @brief   Which threads are running one observer's callback, and whether it may start again.
+     *
+     * A synchronous post runs its callbacks on the posting thread with the
+     * centre unlocked, so an observer can be removed on another thread while
+     * its callback is still running. The gate is what lets that removal wait:
+     * a dispatch enters it before running the callback and leaves once the
+     * callback returns, and removal closes it -- so no dispatch starts the
+     * callback again -- then waits for the threads still inside.
+     *
+     * The thread doing the removal is never waited for: a callback that removes
+     * its own observer is inside the gate itself, and would wait forever.
+     */
+    class dispatch_gate
+    {
+    public:
+        /**
+         * @brief   Enter before running the callback.
+         * @return  False if the observer is being removed: do not run it.
+         */
+        bool enter()
+        {
+            std::lock_guard lock(m_mutex);
+            if(m_closed) return false;
+            ++m_inside[std::this_thread::get_id()];
+            return true;
+        }
+
+        /**
+         * @brief   Leave once the callback has returned, or thrown.
+         */
+        void leave()
+        {
+            {
+                std::lock_guard lock(m_mutex);
+                if(const auto it = m_inside.find(std::this_thread::get_id()); it != m_inside.end() && --it->second == 0)
+                    m_inside.erase(it);
+            }
+            m_cv.notify_all();
+        }
+
+        /**
+         * @brief   Let no dispatch start the callback again.
+         */
+        void close()
+        {
+            std::lock_guard lock(m_mutex);
+            m_closed = true;
+        }
+
+        /**
+         * @brief   Wait until no thread but this one is running the callback.
+         */
+        void wait_until_idle()
+        {
+            const auto self = std::this_thread::get_id();
+            std::unique_lock lock(m_mutex);
+            m_cv.wait(lock, [this, self]
+            {
+                return m_inside.empty() || (m_inside.size() == 1 && m_inside.contains(self));
+            });
+        }
+
+    private:
+        std::mutex m_mutex;
+        std::condition_variable m_cv;
+        bool m_closed = false;
+        std::unordered_map<std::thread::id, int> m_inside;
+    };
+
+    /**
+     * @brief   Leaves a dispatch_gate when it goes out of scope, so a callback that throws still leaves.
+     */
+    class gate_exit
+    {
+    public:
+        explicit gate_exit(dispatch_gate& a_gate) : m_gate(a_gate) {}
+        ~gate_exit() { m_gate.leave(); }
+
+        gate_exit(const gate_exit&) = delete;
+        gate_exit& operator=(const gate_exit&) = delete;
+
+    private:
+        dispatch_gate& m_gate;
+    };
 }
 
 /**
@@ -104,7 +190,8 @@ public:
             m_callback(nullptr),
             m_id(a_id),
             m_types(std::move(a_types)),
-            m_notification(a_notification)
+            m_notification(a_notification),
+            m_gate(std::make_shared<notifly_detail::dispatch_gate>())
     {}
 
     /**
@@ -117,6 +204,11 @@ public:
      */
     [[nodiscard]] const std::string& get_types() const { return m_types; }
 
+    /**
+     * @brief   The gate synchronous dispatches of this observer's callback go through.
+     */
+    [[nodiscard]] const std::shared_ptr<notifly_detail::dispatch_gate>& get_gate() const { return m_gate; }
+
     // Callback function to be invoked when a notification is posted
     std::function<std::any(std::any)> m_callback;
 
@@ -124,6 +216,7 @@ private:
     int m_id;
     std::string m_types;
     int m_notification;
+    std::shared_ptr<notifly_detail::dispatch_gate> m_gate;
 };
 
 /**
@@ -221,37 +314,58 @@ public:
 
     /**
      * @brief               This method removes an observer by id.
+     *
+     * Returns only once the observer's callback is running nowhere else: an
+     * async delivery already started is joined, a synchronous dispatch already
+     * inside the callback on another thread is waited for, and a synchronous
+     * dispatch that has not reached it yet skips it. What the callback refers
+     * to can be released as soon as this returns.
+     *
+     * A callback may remove its own observer. It must not be removed while
+     * holding a lock that a callback running on another thread is waiting
+     * for, since this waits for that callback.
+     *
      * @param a_observer    The observer id you wish to remove.
      * @return              0 if successful or an error code.
      */
     int remove_observer(const int a_observer)
     {
-        std::lock_guard lock(m_mutex);
-
-        // Check if observer exists
-        if(!m_observer_lookup.contains(a_observer))
-            return static_cast<int>(notifly_result::observer_not_found);
-
-        // Wait for any async tasks related to this observer to complete
-        wait_for_observer_tasks(a_observer);
-
-        // Get observer info and remove it
-        const auto& [notification_id, observer_iter] = m_observer_lookup[a_observer];
-
-        if(const auto it = m_observers.find(notification_id); it != m_observers.end())
+        std::shared_ptr<notifly_detail::dispatch_gate> gate;
         {
-            // Remove the observer from its list
-            it->second.observers.erase(observer_iter);
+            std::lock_guard lock(m_mutex);
 
-            // If notification has no more observers, remove it completely
-            if(it->second.observers.empty())
+            // Check if observer exists
+            if(!m_observer_lookup.contains(a_observer))
+                return static_cast<int>(notifly_result::observer_not_found);
+
+            // Wait for any async tasks related to this observer to complete
+            wait_for_observer_tasks(a_observer);
+
+            // Get observer info and remove it
+            const auto& [notification_id, observer_iter] = m_observer_lookup[a_observer];
+            gate = observer_iter->get_gate();
+
+            if(const auto it = m_observers.find(notification_id); it != m_observers.end())
             {
-                m_observers.erase(it);
+                // Remove the observer from its list
+                it->second.observers.erase(observer_iter);
+
+                // If notification has no more observers, remove it completely
+                if(it->second.observers.empty())
+                {
+                    m_observers.erase(it);
+                }
             }
+
+            m_observer_lookup.erase(a_observer);
         }
 
-        // Cleanup
-        m_observer_lookup.erase(a_observer);
+        // Unlocked: a callback still running may post to, or subscribe on, this centre.
+        gate->close();
+        gate->wait_until_idle();
+
+        // The id is reused only once nothing is still running for it.
+        std::lock_guard lock(m_mutex);
         release_id(a_observer);
 
         return static_cast<int>(notifly_result::success);
@@ -259,34 +373,43 @@ public:
 
     /**
      * @brief                   This method removes all observers from a given notification.
+     *
+     * Waits for their callbacks the way remove_observer() does.
+     *
      * @param   a_notification  The notification you wish to remove observers from.
      * @return                  The number of observers removed or an error code.
      */
     int remove_all_observers(auto a_notification)
     {
-        std::lock_guard lock(m_mutex);
-
-        const auto it = m_observers.find(a_notification);
-        if(it == m_observers.end())
-            return 0;
-
-        // Get number of observers for return value
-        const auto count = it->second.observers.size();
-
-        // Wait for any async tasks related to this notification to complete
-        wait_for_notification_tasks(a_notification);
-
-        // Release all observer IDs
-        for(const auto& observer: it->second.observers)
+        std::vector<std::pair<int, std::shared_ptr<notifly_detail::dispatch_gate>>> removed;
         {
-            m_observer_lookup.erase(observer.get_id());
-            release_id(observer.get_id());
+            std::lock_guard lock(m_mutex);
+
+            const auto it = m_observers.find(a_notification);
+            if(it == m_observers.end())
+                return 0;
+
+            // Wait for any async tasks related to this notification to complete
+            wait_for_notification_tasks(a_notification);
+
+            for(const auto& observer: it->second.observers)
+            {
+                m_observer_lookup.erase(observer.get_id());
+                removed.emplace_back(observer.get_id(), observer.get_gate());
+            }
+
+            // Remove the notification entry
+            m_observers.erase(it);
         }
 
-        // Remove the notification entry
-        m_observers.erase(it);
+        // Close them all before waiting on any, so none starts while another is waited for.
+        for(const auto& gate: removed | std::views::values) gate->close();
+        for(const auto& gate: removed | std::views::values) gate->wait_until_idle();
 
-        return count;
+        std::lock_guard lock(m_mutex);
+        for(const int id: removed | std::views::keys) release_id(id);
+
+        return static_cast<int>(removed.size());
     }
 
     /**
@@ -359,17 +482,18 @@ public:
      * Subscribe with on(), then post whatever the reply is expected to answer,
      * then block on wait(), drain() or silent_for(). The destructor
      * unsubscribes, and remove_observer() waits for a dispatch already in
-     * flight, so a handler may safely refer to the caller's own locals.
+     * flight -- async or synchronous, on any other thread -- so a handler may
+     * safely refer to the caller's own locals.
      *
      * Once a handler returns notifly_verdict::done the exchange is complete and
      * later deliveries are ignored, so a sender that repeats itself -- or
      * answers on two of the subscribed notifications -- cannot disturb what the
      * winning handler stored.
      *
-     * @warning Never destroy an exchange, or call remove_observer(), from
-     *          inside a handler: dispatch runs with the notification centre
-     *          locked, and unsubscribing there would wait on the very dispatch
-     *          that is running.
+     * @warning Never destroy an exchange, or call remove_observer() on one of
+     *          its observers, from inside one of its handlers: a handler runs
+     *          with the exchange's own lock held, and the exchange would be
+     *          destroyed under the handler still holding it.
      */
     class exchange
     {
@@ -636,8 +760,10 @@ private:
         // its whole timeout for no reason.
         //
         // The callbacks are copied, so removing an observer while its callback is in flight does
-        // not pull the ground out from under it.
-        std::vector<std::function<std::any(std::any)>> sync_callbacks;
+        // not pull the ground out from under it, and each runs through its observer's gate, so
+        // the removal can wait for it: see remove_observer().
+        std::vector<std::pair<std::function<std::any(std::any)>, std::shared_ptr<notifly_detail::dispatch_gate>>>
+            sync_callbacks;
         std::size_t observer_count = 0;
         {
             std::lock_guard lock(m_mutex);
@@ -673,13 +799,19 @@ private:
                 }
                 else
                 {
-                    sync_callbacks.push_back(observer.m_callback);
+                    sync_callbacks.emplace_back(observer.m_callback, observer.get_gate());
                 }
             }
         }
 
-        for(auto& callback : sync_callbacks)
+        for(auto& [callback, gate] : sync_callbacks)
+        {
+            // Being removed since it was collected: it must not start now.
+            if(!gate->enter()) continue;
+
+            const notifly_detail::gate_exit exit(*gate);
             callback(payload);
+        }
 
         return static_cast<int>(observer_count);
     }

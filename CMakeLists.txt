@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(notifly VERSION 3.8.1)
+project(notifly VERSION 3.8.2)
 
 set(CMAKE_CXX_STANDARD 20)
 

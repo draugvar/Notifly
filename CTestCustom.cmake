@@ -3,8 +3,9 @@
 #
 # Tests listed here still run as part of a normal `ctest`/`Run Tests`
 # invocation -- this only skips them during the memcheck (Valgrind) pass.
-# See CMakeLists.txt, next to where UnitTestsHighFrequencyAsyncDispatch is
-# registered, for why.
+# See CMakeLists.txt, next to where UnitTestsHighFrequencyAsyncDispatch and
+# UnitTestsShortLivedExchanges are registered, for why.
 set(CTEST_CUSTOM_MEMCHECK_IGNORE
     UnitTestsHighFrequencyAsyncDispatch
+    UnitTestsShortLivedExchanges
 )

@@ -121,6 +121,30 @@ void slow_async_callback(int notification_id, void* data, void* user_data) {
     slow_callback_finished = 1;
 }
 
+/* Posts synchronously, on whatever thread it runs on, the notification whose
+ * id is SYNC_RELAY_TARGET, passing its own payload on. Posted asynchronously
+ * itself, it is how this C file gets a synchronous dispatch running on a thread
+ * of its own without a thread API of its own. user_data is the handle. */
+static volatile int sync_relay_target = 0;
+
+void sync_relay_callback(int notification_id, void* data, void* user_data) {
+    (void)notification_id;
+    notifly_post_notification((notifly_handle)user_data, sync_relay_target, data);
+}
+
+/* Exchange handler counterpart of slow_async_callback. */
+notifly_verdict_t slow_exchange_handler(int notification_id, void* data, void* user_data) {
+    (void)notification_id;
+    (void)data;
+    slow_callback_started = 1;
+    sleep_ms(200);
+    if (user_data) {
+        *(int*)user_data = 42;
+    }
+    slow_callback_finished = 1;
+    return NOTIFLY_VERDICT_DONE;
+}
+
 /* Exchange handlers */
 
 notifly_verdict_t exchange_done_handler(int notification_id, void* data, void* user_data) {
@@ -314,6 +338,83 @@ int test_remove_observer_waits_for_async_callback(void) {
     ASSERT_EQ(user_data, 42, "Async callback should have finished writing its user_data");
 
     notifly_remove_all_observers(handle, 6009);
+
+    return 1;
+}
+
+/* A synchronous post runs its callbacks on the posting thread with the centre
+ * unlocked, so a removal on another thread can race with one of them, exactly
+ * as with the async case above. */
+int test_remove_observer_waits_for_sync_callback(void) {
+    reset_test_state();
+
+    notifly_handle handle = notifly_default();
+    ASSERT_NOT_NULL(handle, "Could not get default handle");
+
+    notifly_remove_all_observers(handle, 6010);
+    notifly_remove_all_observers(handle, 6011);
+    slow_callback_started = 0;
+    slow_callback_finished = 0;
+    sync_relay_target = 6011;
+    int user_data = 0;
+
+    const int relay_id = notifly_add_observer(handle, 6010, sync_relay_callback, handle);
+    ASSERT(relay_id > 0, "Could not add relay observer");
+    const int observer_id = notifly_add_observer(handle, 6011, slow_async_callback, &user_data);
+    ASSERT(observer_id > 0, "Could not add observer");
+
+    /* The relay's thread posts 6011 synchronously, running the slow callback. */
+    ASSERT_EQ(notifly_post_notification_async(handle, 6010, NULL), 1, "Expected the relay to be notified");
+    for (int i = 0; i < 200 && !slow_callback_started; ++i) {
+        sleep_ms(5);
+    }
+    ASSERT(slow_callback_started, "Sync callback should have started");
+
+    const int result = notifly_remove_observer(handle, observer_id);
+    ASSERT_EQ(result, NOTIFLY_SUCCESS, "Could not remove observer");
+    ASSERT(slow_callback_finished, "Removal should wait for the in-flight sync callback");
+    ASSERT_EQ(user_data, 42, "Sync callback should have finished writing its user_data");
+
+    notifly_remove_observer(handle, relay_id);
+
+    return 1;
+}
+
+/* What notifly_remove_observer() promises above, notifly_exchange_destroy()
+ * relies on: the handler a sender is still inside writes through user_data the
+ * caller is about to give up. */
+int test_exchange_destroy_waits_for_handler_in_flight(void) {
+    reset_test_state();
+
+    notifly_handle handle = notifly_default();
+    ASSERT_NOT_NULL(handle, "Could not get default handle");
+
+    notifly_remove_all_observers(handle, 6012);
+    notifly_remove_all_observers(handle, 6013);
+    slow_callback_started = 0;
+    slow_callback_finished = 0;
+    sync_relay_target = 6013;
+    int user_data = 0;
+
+    notifly_exchange_handle ex = notifly_exchange_create(handle);
+    ASSERT_NOT_NULL(ex, "Could not create exchange");
+    ASSERT_EQ(notifly_exchange_on(ex, 6013, slow_exchange_handler, &user_data), NOTIFLY_SUCCESS,
+              "on() should succeed");
+
+    const int relay_id = notifly_add_observer(handle, 6012, sync_relay_callback, handle);
+    ASSERT(relay_id > 0, "Could not add relay observer");
+
+    ASSERT_EQ(notifly_post_notification_async(handle, 6012, NULL), 1, "Expected the relay to be notified");
+    for (int i = 0; i < 200 && !slow_callback_started; ++i) {
+        sleep_ms(5);
+    }
+    ASSERT(slow_callback_started, "Exchange handler should have started");
+
+    notifly_exchange_destroy(ex);
+    ASSERT(slow_callback_finished, "Destroying the exchange should wait for its in-flight handler");
+    ASSERT_EQ(user_data, 42, "Handler should have finished writing its user_data");
+
+    notifly_remove_observer(handle, relay_id);
 
     return 1;
 }
@@ -513,6 +614,8 @@ int main(void) {
     RUN_TEST(test_exchange_drain);
     RUN_TEST(test_exchange_capture);
     RUN_TEST(test_exchange_invalid_params);
+    RUN_TEST(test_remove_observer_waits_for_sync_callback);
+    RUN_TEST(test_exchange_destroy_waits_for_handler_in_flight);
 
     printf("\n==========================================\n");
     printf("  Test Results\n");

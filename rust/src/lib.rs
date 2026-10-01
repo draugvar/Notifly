@@ -48,10 +48,86 @@ pub enum notifly_verdict_t {
 
 type InternalCallback = Arc<dyn Fn(usize) + Send + Sync>;
 
+// Which threads are running one observer's callback, and whether it may start
+// again -- the C++ backend's notifly_detail::dispatch_gate. A synchronous post
+// runs its callbacks with the core lock released, so an observer can be
+// removed on another thread while its callback is still running: removal
+// closes the gate, so no dispatch starts the callback again, then waits for
+// the threads still inside. The removing thread itself is never waited for --
+// a callback that removes its own observer is inside the gate already.
+#[derive(Default)]
+struct DispatchGate {
+    state: Mutex<GateState>,
+    idle: Condvar,
+}
+
+#[derive(Default)]
+struct GateState {
+    closed: bool,
+    inside: HashMap<thread::ThreadId, usize>,
+}
+
+impl DispatchGate {
+    /// Enter before running the callback. False if the observer is being
+    /// removed: do not run it.
+    fn enter(&self) -> bool {
+        let mut state = self.state.lock().unwrap();
+        if state.closed {
+            return false;
+        }
+        *state.inside.entry(thread::current().id()).or_insert(0) += 1;
+        true
+    }
+
+    /// Leave once the callback has returned.
+    fn leave(&self) {
+        {
+            let mut state = self.state.lock().unwrap();
+            let current = thread::current().id();
+            if let Some(count) = state.inside.get_mut(&current) {
+                *count -= 1;
+                if *count == 0 {
+                    state.inside.remove(&current);
+                }
+            }
+        }
+        self.idle.notify_all();
+    }
+
+    /// Let no dispatch start the callback again.
+    fn close(&self) {
+        self.state.lock().unwrap().closed = true;
+    }
+
+    /// Wait until no thread but this one is running the callback.
+    fn wait_until_idle(&self) {
+        let current = thread::current().id();
+        let state = self.state.lock().unwrap();
+        let _idle = self
+            .idle
+            .wait_while(state, |s| {
+                !(s.inside.is_empty() || (s.inside.len() == 1 && s.inside.contains_key(&current)))
+            })
+            .unwrap();
+    }
+}
+
+// Leaves a DispatchGate when dropped, so a callback that unwinds still leaves.
+struct GateExit<'a>(&'a DispatchGate);
+
+impl Drop for GateExit<'_> {
+    fn drop(&mut self) {
+        self.0.leave();
+    }
+}
+
 struct ObserverEntry {
     id: i32,
     callback: InternalCallback,
+    gate: Arc<DispatchGate>,
 }
+
+type Snapshot = Vec<(i32, InternalCallback, Arc<DispatchGate>)>;
 
 struct NotiflyCore {
     observers: HashMap<i32, Vec<ObserverEntry>>,
@@ -129,7 +205,11 @@ impl notifly_instance {
                 core.observers
                     .entry(notification_id)
                     .or_default()
-                    .push(ObserverEntry { id, callback });
+                    .push(ObserverEntry {
+                        id,
+                        callback,
+                        gate: Arc::new(DispatchGate::default()),
+                    });
                 core.observer_location.insert(id, notification_id);
                 id
             }
@@ -152,25 +232,34 @@ impl notifly_instance {
     }
 
     fn remove_observer(&self, observer_id: i32) -> i32 {
-        {
+        let gate = {
             let mut core = self.inner.core.lock().unwrap();
             match core.observer_location.remove(&observer_id) {
                 None => return NOTIFLY_OBSERVER_NOT_FOUND,
                 Some(notification_id) => {
+                    let mut gate = None;
                     if let Some(vec) = core.observers.get_mut(&notification_id) {
-                        vec.retain(|e| e.id != observer_id);
+                        if let Some(pos) = vec.iter().position(|e| e.id == observer_id) {
+                            gate = Some(vec.remove(pos).gate);
+                        }
                         if vec.is_empty() {
                             core.observers.remove(&notification_id);
                         }
                     }
+                    gate
                 }
             }
-        }
+        };
 
         // A dispatch that already cloned this callback may still be running. The
         // caller is free to release its user_data once removal returns (and an
         // exchange's Drop runs right after this), so wait for that work here
-        // rather than let it dereference freed memory.
+        // rather than let it dereference freed memory: a synchronous dispatch
+        // through the gate, an async one by joining its thread.
+        if let Some(gate) = gate {
+            gate.close();
+            gate.wait_until_idle();
+        }
         self.wait_for_observer_tasks(&[observer_id]);
 
         self.inner.core.lock().unwrap().recycled_ids.push(observer_id);
@@ -178,22 +267,28 @@ impl notifly_instance {
     }
 
     fn remove_all_observers(&self, notification_id: i32) -> i32 {
-        let observer_ids: Vec<i32> = {
+        let (observer_ids, gates): (Vec<i32>, Vec<Arc<DispatchGate>>) = {
             let mut core = self.inner.core.lock().unwrap();
             match core.observers.remove(&notification_id) {
                 None => return 0,
                 Some(observers) => {
-                    let ids: Vec<i32> = observers.iter().map(|e| e.id).collect();
-                    for id in &ids {
-                        core.observer_location.remove(id);
+                    for e in &observers {
+                        core.observer_location.remove(&e.id);
                     }
-                    ids
+                    observers.into_iter().map(|e| (e.id, e.gate)).unzip()
                 }
             }
         };
 
         // Same contract as remove_observer(): no id is recycled, and nothing is
-        // reported removed, while a dispatch for it is still in flight.
+        // reported removed, while a dispatch for it is still in flight. Every
+        // gate is closed before any is waited on, so none starts meanwhile.
+        for gate in &gates {
+            gate.close();
+        }
+        for gate in &gates {
+            gate.wait_until_idle();
+        }
         self.wait_for_observer_tasks(&observer_ids);
 
         let mut core = self.inner.core.lock().unwrap();
@@ -204,10 +299,12 @@ impl notifly_instance {
     }
 
     // Snapshot callbacks without holding the lock so callbacks can re-enter.
-    fn snapshot_observers(&self, notification_id: i32) -> Option<Vec<(i32, InternalCallback)>> {
+    fn snapshot_observers(&self, notification_id: i32) -> Option<Snapshot> {
         let core = self.inner.core.lock().unwrap();
         core.observers.get(&notification_id).map(|list| {
-            list.iter().map(|e| (e.id, Arc::clone(&e.callback))).collect()
+            list.iter()
+                .map(|e| (e.id, Arc::clone(&e.callback), Arc::clone(&e.gate)))
+                .collect()
         })
     }
 
@@ -218,7 +315,12 @@ impl notifly_instance {
         };
         let count = observers.len() as i32;
         let data_usize = data as usize;
-        for (_, cb) in observers {
+        for (_, cb, gate) in observers {
+            // Being removed since the snapshot: it must not start now.
+            if !gate.enter() {
+                continue;
+            }
+            let _exit = GateExit(&gate);
             cb(data_usize);
         }
         count
@@ -235,7 +337,7 @@ impl notifly_instance {
         let count = observers.len() as i32;
         let data_usize = data as usize;
         let mut tasks = self.inner.pending_tasks.lock().unwrap();
-        for (id, cb) in observers {
+        for (id, cb, _) in observers {
             // thread::Builder rather than thread::spawn: this runs behind an
             // extern "C" export, where the panic spawn() raises when the OS is
             // out of threads cannot unwind to the caller and would abort the
@@ -380,7 +482,8 @@ impl notifly_exchange {
         // The callback captures this exchange's own address rather than an Arc,
         // mirroring notifly::exchange::on()'s C++ lambda, which captures `this` by
         // raw pointer -- same contract: the exchange must outlive any dispatch
-        // that might still be in flight against it.
+        // that might still be in flight against it, which Drop guarantees by
+        // removing its observers, since removal waits for those dispatches.
         let self_addr = self as *const notifly_exchange as usize;
         let user_data_addr = user_data as usize;
         let cb: InternalCallback = Arc::new(move |data_usize: usize| {

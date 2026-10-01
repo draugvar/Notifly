@@ -751,3 +751,115 @@ TEST(NotiflyMemoryLeak, CompletedTasksAreReclaimed)
         << "Expected at most 1 pending task after cleanup, got " << count;
 }
 
+// ---------------------------------------------------------------------------
+// Removing an observer while a synchronous dispatch is running its callback.
+//
+// A synchronous post runs its callbacks on the posting thread with the centre
+// unlocked, so another thread can remove an observer while its callback is
+// running. remove_observer() must not return until that callback has finished:
+// the caller is free to destroy whatever the callback refers to as soon as it
+// does, and notifly::exchange's destructor does exactly that.
+// ---------------------------------------------------------------------------
+
+namespace
+{
+    // Holds a callback inside its dispatch until the test lets it go. Each wait
+    // gives up after two seconds, so a regression fails the test instead of
+    // hanging it.
+    struct held_dispatch
+    {
+        std::atomic<bool> entered{false};
+        std::atomic<bool> released{false};
+        std::atomic<bool> finished{false};
+
+        void run()
+        {
+            entered = true;
+            for (int i = 0; i < 400 && !released; ++i) std::this_thread::sleep_for(5ms);
+            finished = true;
+        }
+
+        [[nodiscard]] bool wait_entered() const
+        {
+            for (int i = 0; i < 400 && !entered; ++i) std::this_thread::sleep_for(5ms);
+            return entered;
+        }
+    };
+}
+
+TEST(notifly, remove_observer_waits_for_a_synchronous_dispatch_already_running_its_callback)
+{
+    notifly nf;
+    held_dispatch held;
+    const int id = nf.add_observer(kTestNotification, [&held](int) { held.run(); });
+    ASSERT_GT(id, 0);
+
+    std::thread poster([&] { nf.post_notification(kTestNotification, 1); });
+    ASSERT_TRUE(held.wait_entered());
+
+    std::atomic<bool> removed{false};
+    std::atomic<bool> finished_when_removed{false};
+    std::thread remover([&]
+    {
+        EXPECT_EQ(nf.remove_observer(id), static_cast<int>(notifly_result::success));
+        finished_when_removed = held.finished.load();
+        removed = true;
+    });
+
+    std::this_thread::sleep_for(150ms);
+    EXPECT_FALSE(removed) << "remove_observer() returned while the callback was still running";
+
+    held.released = true;
+    remover.join();
+    poster.join();
+    EXPECT_TRUE(finished_when_removed);
+}
+
+TEST(notifly, a_dispatch_in_flight_does_not_start_a_callback_whose_removal_has_begun)
+{
+    notifly nf;
+    held_dispatch held;
+    std::atomic<int> second_calls{0};
+    nf.add_observer(kTestNotification, [&held](int) { held.run(); });
+    const int second = nf.add_observer(kTestNotification, [&second_calls](int) { ++second_calls; });
+    ASSERT_GT(second, 0);
+
+    // The dispatch is inside the first callback, with the second queued behind it.
+    std::thread poster([&] { nf.post_notification(kTestNotification, 1); });
+    ASSERT_TRUE(held.wait_entered());
+
+    std::thread remover([&] { nf.remove_observer(second); });
+    std::this_thread::sleep_for(50ms);  // let the removal begin
+    held.released = true;
+    remover.join();
+    poster.join();
+
+    EXPECT_EQ(second_calls.load(), 0) << "a callback started after its observer was being removed";
+}
+
+TEST(notifly, a_callback_may_remove_its_own_observer_during_a_synchronous_dispatch)
+{
+    // On the heap, and leaked if the dispatch never returns, so a deadlock
+    // fails this test rather than taking the process down with it.
+    auto nf = std::make_unique<notifly>();
+    int id = 0;
+    std::atomic<int> result{1};
+    id = nf->add_observer(kTestNotification, [&nf, &id, &result](int) { result = nf->remove_observer(id); });
+    ASSERT_GT(id, 0);
+
+    std::atomic<bool> returned{false};
+    std::thread poster([&nf, &returned] { nf->post_notification(kTestNotification, 1); returned = true; });
+    for (int i = 0; i < 400 && !returned; ++i) std::this_thread::sleep_for(5ms);
+    if (!returned)
+    {
+        poster.detach();
+        (void)nf.release();
+        FAIL() << "an observer removing itself from inside its own callback deadlocked";
+    }
+    poster.join();
+
+    EXPECT_EQ(result.load(), static_cast<int>(notifly_result::success));
+    EXPECT_EQ(nf->post_notification(kTestNotification, 2),
+              static_cast<int>(notifly_result::notification_not_found));
+}
+

@@ -90,8 +90,18 @@ if(NOTIFLY_BACKEND STREQUAL "cpp")
     # resource limit around 89s). Split it into its own ctest entry so
     # CTestCustom.cmake can skip just that one during memcheck, while both still
     # run as part of a normal `ctest`/`Run Tests` invocation.
-    add_test(NAME UnitTests COMMAND ${UNIT_TEST} --gtest_filter=-NotiflyMemoryLeak.HighFrequencyAsyncDispatch)
+    #
+    # exchange.short_lived_exchanges_survive_two_senders_answering_at_once is split
+    # out for the same reason: two senders posting flat out while a third thread
+    # waits is what it needs to hit the race, and Valgrind running one thread at
+    # a time turns that into a run that never finishes (observed: the whole
+    # UnitTests entry timing out at 1500s). It is a race detector for normal and
+    # sanitizer builds; the deterministic tests next to it still run under memcheck.
+    add_test(NAME UnitTests COMMAND ${UNIT_TEST}
+        --gtest_filter=-NotiflyMemoryLeak.HighFrequencyAsyncDispatch:exchange.short_lived_exchanges_survive_two_senders_answering_at_once)
     add_test(NAME UnitTestsHighFrequencyAsyncDispatch COMMAND ${UNIT_TEST} --gtest_filter=NotiflyMemoryLeak.HighFrequencyAsyncDispatch)
+    add_test(NAME UnitTestsShortLivedExchanges COMMAND ${UNIT_TEST}
+        --gtest_filter=exchange.short_lived_exchanges_survive_two_senders_answering_at_once)
 
     # Exchange example
     set(EXCHANGE_EXAMPLE notifly_exchange_example)

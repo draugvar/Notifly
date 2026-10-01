@@ -13,6 +13,7 @@
 #include <atomic>
 #include <chrono>
 #include <mutex>
+#include <optional>
 #include <string>
 #include <thread>
 #include <vector>
@@ -441,4 +442,90 @@ TEST(exchange, post_and_wait_still_reports_a_missing_responder)
     const auto ret = center.post_and_wait(kCommand, kStatus, 100, result, 1);
 
     EXPECT_EQ(ret, notifly_result::notification_not_found);
+}
+
+// ---------------------------------------------------------------------------
+// An exchange going away while a sender is still inside one of its handlers.
+//
+// The sender posts synchronously, so the handler runs on the sender's thread
+// while the waiter, already answered, destroys its exchange and the locals the
+// handler writes to. The destructor has to wait for that handler.
+// ---------------------------------------------------------------------------
+
+TEST(exchange, destruction_waits_for_a_delivery_already_inside_a_handler)
+{
+    notifly center;
+    std::atomic<bool> entered{false};
+    std::atomic<bool> released{false};
+    std::atomic<bool> finished{false};
+
+    // In an optional so the test, not a scope, decides when it is destroyed.
+    std::optional<notifly::exchange> ex(std::in_place, center);
+    ex->on<int>(kStatus, [&](int)
+    {
+        entered = true;
+        for (int i = 0; i < 400 && !released; ++i) std::this_thread::sleep_for(5ms);
+        finished = true;
+        return notifly_verdict::done;
+    });
+
+    std::thread device([&] { center.post_notification(kStatus, 1); });
+    for (int i = 0; i < 400 && !entered; ++i) std::this_thread::sleep_for(5ms);
+    ASSERT_TRUE(entered);
+
+    std::atomic<bool> destroyed{false};
+    std::atomic<bool> finished_when_destroyed{false};
+    std::thread caller([&]
+    {
+        ex.reset();
+        finished_when_destroyed = finished.load();
+        destroyed = true;
+    });
+
+    std::this_thread::sleep_for(150ms);
+    EXPECT_FALSE(destroyed) << "the exchange was destroyed while its handler was still running";
+
+    released = true;
+    caller.join();
+    device.join();
+    EXPECT_TRUE(finished_when_destroyed);
+}
+
+TEST(exchange, short_lived_exchanges_survive_two_senders_answering_at_once)
+{
+    // The shape that found this: one exchange per command, destroyed as soon
+    // as it is answered, while two senders keep answering on other threads. A
+    // late delivery into an exchange that has gone writes into a dead frame.
+    notifly center;
+
+    // Keeps the notification registered between exchanges, so the senders
+    // never find it missing.
+    const int keeper = center.add_observer(kStatus, [](int) {});
+    ASSERT_GT(keeper, 0);
+
+    std::atomic<bool> stop{false};
+    auto sender = [&] { while (!stop) center.post_notification(kStatus, 7); };
+    std::thread first(sender);
+    std::thread second(sender);
+
+    int answered = 0;
+    for (int i = 0; i < 2000; ++i)
+    {
+        std::string reply;
+        notifly::exchange ex(center);
+        ex.on<int>(kStatus, [&reply](int a_value)
+        {
+            reply.assign(64, static_cast<char>('0' + a_value));
+            return notifly_verdict::done;
+        });
+        if (ex.wait(2000ms) != kStatus || reply != std::string(64, '7')) break;
+        ++answered;
+    }
+
+    stop = true;
+    first.join();
+    second.join();
+    center.remove_observer(keeper);
+
+    EXPECT_EQ(answered, 2000);
 }
